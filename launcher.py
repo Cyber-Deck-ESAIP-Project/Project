@@ -1,8 +1,19 @@
 import os
 import sys
+
+# Define project root
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+# AUTOMATIC VIRTUAL ENVIRONMENT INJECTION
+# This ensures that even if launched via 'sudo python3 launcher.py', 
+# the app can find dependencies installed in the local .venv.
+VENV_SITE_PACKAGES = os.path.join(PROJECT_ROOT, ".venv", "lib", f"python{sys.version_info.major}.{sys.version_info.minor}", "site-packages")
+if os.path.exists(VENV_SITE_PACKAGES):
+    sys.path.insert(0, VENV_SITE_PACKAGES)
+
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
+
 from utils.logger import get_logger
 from utils.config_loader import load_config
 
