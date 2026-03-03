@@ -5,8 +5,8 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import time
-from utils.logger import get_logger
-from utils.result_handler import create_result
+from utils.logger import get_logger # type: ignore
+from utils.result_handler import create_result # type: ignore
 
 logger = get_logger()
 
@@ -31,7 +31,9 @@ def run(config, callback=None, **kwargs):
     
     try:
         import subprocess
+        import re
         # Using nmcli for broader compatibility on modern linux without requiring root for basic scan
+        # Format: BSSID:SSID:SIGNAL:SECURITY
         proc = subprocess.run(['nmcli', '-t', '-f', 'BSSID,SSID,SIGNAL,SECURITY', 'dev', 'wifi', 'list'], 
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
         
@@ -39,25 +41,18 @@ def run(config, callback=None, **kwargs):
             lines = proc.stdout.strip().split('\n')
             for line in lines:
                 if not line: continue
-                # nmcli -t escapes colons in MAC addresses as \: so we need to handle that carefully.
-                # Format: BSSID:SSID:SIGNAL:SECURITY
-                # It's safer to split from the right for SIGNAL and SECURITY
-                parts = line.rsplit(':', 2)
-                if len(parts) >= 3:
-                    security = parts[2]
-                    signal = parts[1]
-                    
-                    # The rest is BSSID and SSID which might contain escaped colons
-                    remainder = parts[0]
-                    # BSSID is 17 chars long usually (e.g. AA:BB:CC:DD:EE:FF), but -t escapes it.
-                    # Let's just do a basic split for demonstration
-                    bssid_ssid = remainder.split(':', 1)
-                    
-                    bssid = bssid_ssid[0].replace('\\:', ':') if len(bssid_ssid) > 1 else remainder
-                    ssid = bssid_ssid[1] if len(bssid_ssid) > 1 else "Hidden"
+                # Regex for splitting by ':' NOT preceded by '\'
+                # This correctly handles nmcli's escaped colons.
+                parts = re.split(r'(?<!\\):', line)
+                
+                if len(parts) >= 4:
+                    bssid = parts[0].replace('\\:', ':')
+                    ssid = parts[1].replace('\\:', ':') if parts[1] else "Hidden"
+                    signal = parts[2]
+                    security = parts[3]
                     
                     flags = []
-                    if not security or security == "WPA1" or security == "WEP": flags.append("WEAK_CRYPTO")
+                    if not security or "WPA1" in security or "WEP" in security: flags.append("WEAK_CRYPTO")
                     if not security: flags.append("OPEN_NETWORK")
                     
                     networks.append({
@@ -81,14 +76,20 @@ def run(config, callback=None, **kwargs):
     if callback: callback(f"\n[+] Spectrum Sweep Complete. Found {len(all_networks)} Access Points.")
     if callback: callback(f"[*] Extracting detailed AP profiles...\n")
     
+    # Sort by signal strength (descending)
+    all_networks.sort(key=lambda x: int(x['rssi'].replace('%','')), reverse=True)
+
     for ap in all_networks:
         flags_str = " | ".join(ap['flags']) if ap['flags'] else "OK"
+        # User requested SSID first!
+        log_line = f"[{ap['ssid']}] (BSSID: {ap['bssid']} | Sig: {ap['rssi']} | {ap['crypto']})"
+        
         if "EVIL" in flags_str or "SUSPECT" in flags_str:
-            if callback: callback(f"[!] ROGUE AP: {ap['ssid']} (BSSID: {ap['bssid']} | Sig: {ap['rssi']} | {ap['crypto']}) -> FLAGS: [{flags_str}]")
+            if callback: callback(f"[!] ROGUE AP: {log_line} -> FLAGS: [{flags_str}]")
         elif "OPEN" in flags_str or "WEAK" in flags_str:
-            if callback: callback(f"[-] VULNERABLE AP: {ap['ssid']} (BSSID: {ap['bssid']} | Sig: {ap['rssi']} | {ap['crypto']}) -> FLAGS: [{flags_str}]")
+            if callback: callback(f"[-] VULNERABLE AP: {log_line} -> FLAGS: [{flags_str}]")
         else:
-            if callback: callback(f"[+] AP: {ap['ssid']} (BSSID: {ap['bssid']} | Sig: {ap['rssi']} | {ap['crypto']})")
+            if callback: callback(f"[+] AP: {log_line}")
     
     scan_data = {
         "networks_found": len(networks),
