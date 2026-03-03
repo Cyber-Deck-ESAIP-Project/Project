@@ -1,0 +1,36 @@
+{
+    "system": {
+        "log_level": "DEBUG",
+        "results_dir": "results",
+        "logs_dir": "logs",
+        "gemini_api_key": "AIzaSyAj71rFlUgKyIggJPFvuzbhAuLXQo0tOkk"
+    },
+    "modules": {
+        "lan_scan": {
+            "enabled": true,
+            "interface": "eth0",
+            "timeout": 30
+        },
+        "wifi_audit": {
+            "enabled": true,
+            "interface": "wlan1"
+        },
+        "bluetooth_recon": {
+            "enabled": true,
+            "interface": "hci0",
+            "timeout": 20
+        },
+        "passive_monitor": {
+            "enabled": true,
+            "interface": "eth0",
+            "duration": 60
+        }
+    },
+    "dashboard": {
+        "port": 5050,
+        "host": "0.0.0.0"
+    },
+    "api_keys": {
+        "google_gemini_key": "AIzaSyAj71rFlUgKyIggJPFvuzbhAuLXQo0tOkk"
+    }
+}
