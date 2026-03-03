@@ -8,8 +8,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from utils.logger import get_logger
-from utils.result_handler import create_result
+from utils.logger import get_logger # type: ignore
+from utils.result_handler import create_result # type: ignore
 
 logger = get_logger()
 
