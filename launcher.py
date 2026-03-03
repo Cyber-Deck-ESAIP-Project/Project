@@ -14,8 +14,8 @@ if os.path.exists(VENV_SITE_PACKAGES):
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from utils.logger import get_logger
-from utils.config_loader import load_config
+from utils.logger import get_logger # type: ignore
+from utils.config_loader import load_config # type: ignore
 
 def main():
     # Initialize logger
@@ -28,7 +28,7 @@ def main():
         logger.info("Configuration loaded successfully.")
         
         # Start the MVC Event-Driven UI Framework
-        from mode_select.main_window import start_ui
+        from mode_select.main_window import start_ui # type: ignore
         logger.info("Auto-launching Event-Driven MVC Dashboard...")
         start_ui()
 
