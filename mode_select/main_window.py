@@ -13,7 +13,7 @@ if PROJECT_ROOT not in sys.path:
 
 from core.event_bus import event_bus
 from core.app_state import state
-from execute import lan_scan, wifi_audit, bluetooth_recon, pentest_toolkit, anomaly_detection, dashboard_reports
+from modules import lan_scan, wifi_audit, bluetooth_recon, pentest_tools, anomaly_detect, dashboard, passive_monitor
 from mode_select.reports_window import show_reports
 
 # Theme Constants
@@ -70,12 +70,13 @@ class MainWindow:
         tk.Label(sidebar, text="DEPLOY MODULES", bg=TERMINAL_BG, fg=TEXT_CYAN, font=("Courier", 12, "bold")).pack(pady=15)
 
         modules = [
+            ("Passive Monitor", passive_monitor.run),
             ("LAN Scanning", lan_scan.run),
             ("WiFi Audit", wifi_audit.run),
             ("Bluetooth Recon", bluetooth_recon.run),
-            ("Pentest Toolkit", pentest_toolkit.run),
-            ("Anomaly Detection", anomaly_detection.run),
-            ("Reports", dashboard_reports.run)
+            ("Pentest Toolkit", pentest_tools.run),
+            ("Anomaly Detection", anomaly_detect.run),
+            ("Reports", dashboard.run)
         ]
 
         for name, func in modules:

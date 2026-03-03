@@ -2,7 +2,7 @@ import threading
 import time
 from core.app_state import state
 from core.controller import controller
-from execute import lan_scan, wifi_audit
+from modules import lan_scan, wifi_audit
 
 class AutomationScheduler:
     """

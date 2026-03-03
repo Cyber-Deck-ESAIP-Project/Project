@@ -7,8 +7,8 @@ from utils.result_handler import save_result
 
 logger = get_logger()
 
-def discover_modules(modules_dir="execute"):
-    """Discovers available scan modules in the execute directory."""
+def discover_modules(modules_dir="modules"):
+    """Discovers available scan modules in the modules directory."""
     available_modules = {}
     
     if not os.path.exists(modules_dir):
