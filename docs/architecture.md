@@ -26,10 +26,24 @@ CyberDeck OS is built on an **Event-Driven MVC** (Model-View-Controller) archite
 ### 6. Scheduler (`core/scheduler.py`)
 - Background daemon that dispatches `lan_scan.run` via the Controller every 300 seconds (configurable). Respects `state.is_locked_down` — sleeps without acting when the system is locked.
 
+## Module Inventory
+
+| Module | File | Key Technology | Root Required |
+|---|---|---|---|
+| Passive Monitor | `modules/passive_monitor.py` | Scapy `sniff()` — multi-protocol capture; detects ARP spoof, TCP port scan, ICMP flood | Yes |
+| ARP Monitor | `modules/arp_monitor.py` | Scapy BPF-filtered ARP-only capture; builds IP→MAC trust table, flags MITM conflicts | Yes |
+| LAN Scanning | `modules/lan_scan.py` | `python-nmap` ping sweep + port scan | Yes |
+| WiFi Audit | `modules/wifi_audit.py` | `nmcli` subprocess; flags open/WEP networks | No |
+| Bluetooth Recon | `modules/bluetooth_recon.py` | `bluetoothctl devices` subprocess | No |
+| TLS Audit | `modules/tls_audit.py` | stdlib `ssl` — cert expiry, self-signed, hostname, weak TLS version checks | No |
+| Pentest Toolkit | `modules/pentest_tools.py` | Metasploit MSFRPC; falls back to port-to-exploit simulation | No |
+| Anomaly Detection | `modules/anomaly_detect.py` | 7 heuristic rules against `logs/history.json`; optional Gemini AI narrative | No |
+| Reports | `modules/dashboard.py` | Reads history + results dir; generates HTML via `report_generator.py` | No |
+
 ## Data Flow
 1. **Trigger**: User clicks a module button in the GUI sidebar.
 2. **Dispatch**: `SystemController.dispatch_module()` checks lockdown, publishes `SCAN_REQUESTED`, spawns a daemon thread.
-3. **Execution**: The module runs (Nmap, Scapy, bluetoothctl, etc.) and returns a standardized `create_result()` dict.
+3. **Execution**: The module runs (Nmap, Scapy, bluetoothctl, ssl, etc.) and returns a standardized `create_result()` dict.
 4. **Collation**: The Controller wraps the result into a `HistoryRecord` `{timestamp, module, targets, raw_data}`.
 5. **Persistence**: The record is appended to `logs/history.json`. A per-scan JSON is saved to `results/`.
 6. **Notification**: The Controller publishes `SCAN_COMPLETED` with the full record.
