@@ -2,7 +2,7 @@
 # CyberDeck OS Deployment Script
 # Automatically pulls the latest code and restarts services on a Raspberry Pi.
 
-PROJECT_DIR="/home/psk03/Downloads/Cyber_Deck-ESAIP"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "[*] Pulling latest code from origin/main..."
 cd $PROJECT_DIR

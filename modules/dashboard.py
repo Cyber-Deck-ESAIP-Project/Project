@@ -1,6 +1,7 @@
 import os
 import json
-from datetime import datetime
+from utils.result_handler import create_result
+from utils.report_generator import generate_report
 
 def run(config, callback=None, **kwargs):
     if callback: callback("[*] Aggregating scan telemetry for executive summary...")
@@ -46,7 +47,7 @@ def run(config, callback=None, **kwargs):
             if callback: callback(f"[!] Error listing results: {e}")
 
     if callback: callback(f"[+] Found {total_ops} operations and {len(result_files)} result files.")
-    
+
     summary = {
         "total_ops": total_ops,
         "successful_modules": successful_modules,
@@ -55,10 +56,13 @@ def run(config, callback=None, **kwargs):
         "modules_run": modules_run,
         "result_files": result_files
     }
-    
-    return {
-        "module": "Reports",
-        "status": "success",
-        "timestamp": datetime.now().isoformat(),
-        "data": summary
-    }
+
+    # Generate HTML report and notify operator
+    result = create_result("dashboard", "success", data=summary)
+    html_path = generate_report(result)
+    if html_path:
+        if callback: callback(f"[+] HTML report saved to: {html_path}")
+    else:
+        if callback: callback("[!] Warning: HTML report generation failed.")
+
+    return result

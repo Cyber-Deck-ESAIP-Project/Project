@@ -3,8 +3,7 @@ import os
 import sys
 import tkinter as tk
 from tkinter import scrolledtext
-import functools
-from typing import Any, Optional, Callable, cast
+from typing import Any, Optional, cast
 
 # Add project root to sys.path for linter context
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -13,7 +12,7 @@ if PROJECT_ROOT not in sys.path:
 
 from core.event_bus import event_bus
 from core.app_state import state
-from modules import lan_scan, wifi_audit, bluetooth_recon, pentest_tools, anomaly_detect, dashboard, passive_monitor
+from modules import lan_scan, wifi_audit, bluetooth_recon, pentest_tools, anomaly_detect, dashboard, passive_monitor, arp_monitor, tls_audit
 from mode_select.reports_window import show_reports
 
 # Theme Constants
@@ -36,6 +35,7 @@ class MainWindow:
         
         # Explicitly initialize attributes for IDE static analysis
         self.lbl_status: Any = None
+        self.btn_lockdown: Any = None
         self.btn_modules: dict = {}
         self.console: Any = None
         self.lbl_ops: Any = None
@@ -54,9 +54,18 @@ class MainWindow:
         header.pack_propagate(False)
 
         tk.Label(header, text="CYBERDECK OS v2.0", bg=TERMINAL_BG, fg=TEXT_CYAN, font=("Courier", 18, "bold")).pack(side=tk.LEFT, padx=20)
-        
+
         self.lbl_status = tk.Label(header, text="[ SYSTEM IDLE ]", bg=TERMINAL_BG, fg=TEXT_GREEN, font=("Courier", 14, "bold"))
         self.lbl_status.pack(side=tk.RIGHT, padx=20)
+
+        self.btn_lockdown = tk.Button(
+            header, text="[ EMERGENCY LOCKDOWN ]",
+            bg=TERMINAL_BG, fg=TEXT_ORANGE,
+            activebackground=TEXT_RED, activeforeground=TERMINAL_BG,
+            bd=0, highlightthickness=0, font=("Courier", 11, "bold"),
+            command=self._toggle_lockdown
+        )
+        self.btn_lockdown.pack(side=tk.RIGHT, padx=10)
 
         # 2. Main Workspace
         workspace = tk.Frame(self.root, bg=BG_COLOR)
@@ -71,9 +80,11 @@ class MainWindow:
 
         modules = [
             ("Passive Monitor", passive_monitor.run),
+            ("ARP Monitor", arp_monitor.run),
             ("LAN Scanning", lan_scan.run),
             ("WiFi Audit", wifi_audit.run),
             ("Bluetooth Recon", bluetooth_recon.run),
+            ("TLS Audit", tls_audit.run),
             ("Pentest Toolkit", pentest_tools.run),
             ("Anomaly Detection", anomaly_detect.run),
             ("Reports", dashboard.run)
@@ -144,6 +155,22 @@ class MainWindow:
         target = self.ent_target.get() if self.ent_target else "127.0.0.1"
         from core.controller import controller
         controller.dispatch_module(name, func, callback=self._log_to_console, target=target)
+
+    def _toggle_lockdown(self):
+        new_state = not state.is_locked_down
+        state.set_lockdown(new_state)
+        if new_state:
+            self.lbl_status.config(text="[ LOCKDOWN ACTIVE ]", fg=TEXT_RED)
+            self.btn_lockdown.config(text="[ DISENGAGE LOCKDOWN ]", fg=TEXT_RED)
+            for btn in self.btn_modules.values():
+                btn.config(state=tk.DISABLED)
+            self._log_to_console(">> EMERGENCY LOCKDOWN ENGAGED. All module dispatch blocked.")
+        else:
+            self.lbl_status.config(text="[ SYSTEM IDLE ]", fg=TEXT_GREEN)
+            self.btn_lockdown.config(text="[ EMERGENCY LOCKDOWN ]", fg=TEXT_ORANGE)
+            for btn in self.btn_modules.values():
+                btn.config(state=tk.NORMAL)
+            self._log_to_console(">> Lockdown disengaged. System ready.")
 
     def _on_module_start(self, name: str):
         self.active_module = name
