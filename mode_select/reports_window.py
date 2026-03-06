@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import scrolledtext, ttk
+from tkinter import scrolledtext
 import json
 import os
 import webbrowser
@@ -11,6 +11,7 @@ if os.path.abspath(os.path.join(os.path.dirname(__file__), '..')) not in sys.pat
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils.report_generator import generate_report # type: ignore
 from typing import Any
+
 
 class ReportsWindow:
     listbox: Any
@@ -24,10 +25,10 @@ class ReportsWindow:
         self.window.title("CyberDeck // Executive Summary & Reports")
         self.window.geometry("900x700")
         self.window.configure(bg="#0D1117")
-        
+
         self.report_data = report_data
         self.results_dir = "results"
-        
+
         self._setup_ui()
 
     def _setup_ui(self):
@@ -46,6 +47,7 @@ class ReportsWindow:
         header.pack_propagate(False)
 
         data = self.report_data.get("data", {})
+<<<<<<< HEAD
         
         # Handle the new structured payload from dashboard
         if "Executive Overview" in data:
@@ -68,6 +70,14 @@ class ReportsWindow:
 
         summary_text = f"Total Ops: {ops}  |  Entities Found: {entities}  |  Modules: {modules}"
         
+=======
+        summary_text = (
+            f"Total Ops: {data.get('total_ops', 0)}  |  "
+            f"Entities Found: {data.get('entities_found', 0)}  |  "
+            f"Modules: {', '.join(data.get('modules_run', []))}"
+        )
+
+>>>>>>> 4f6b9a2 (Improve dashboard UI: remove raw JSON output and display formatted summary)
         tk.Label(header, text="EXECUTIVE REPORT SUMMARY", bg=TERMINAL_BG, fg=TEXT_CYAN, font=("Courier", 14, "bold")).pack(pady=(10, 5))
         tk.Label(header, text=summary_text, bg=TERMINAL_BG, fg=TEXT_COLOR, font=("Courier", 10)).pack()
 
@@ -89,44 +99,90 @@ class ReportsWindow:
         paned.add(list_frame, width=300)
 
         tk.Label(list_frame, text="RESULT FILES", bg=TERMINAL_BG, fg=TEXT_ORANGE, font=("Courier", 11, "bold")).pack(pady=10)
-        
-        self.listbox = tk.Listbox(list_frame, bg=TERMINAL_BG, fg=TEXT_COLOR, font=("Courier", 10), 
-                                 selectbackground=BORDER_COLOR, selectforeground=TEXT_CYAN, bd=0, highlightthickness=0)
+
+        self.listbox = tk.Listbox(
+            list_frame,
+            bg=TERMINAL_BG,
+            fg=TEXT_COLOR,
+            font=("Courier", 10),
+            selectbackground=BORDER_COLOR,
+            selectforeground=TEXT_CYAN,
+            bd=0,
+            highlightthickness=0,
+        )
         self.listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+<<<<<<< HEAD
         
         for f in self.result_files:
+=======
+
+        for f in data.get("result_files", []):
+>>>>>>> 4f6b9a2 (Improve dashboard UI: remove raw JSON output and display formatted summary)
             self.listbox.insert(tk.END, f)
-            
+
         self.listbox.bind("<<ListboxSelect>>", self._on_file_select)
 
         # 2b. Right Pane - Content Viewer
         viewer_frame = tk.Frame(paned, bg=TERMINAL_BG, highlightbackground=BORDER_COLOR, highlightthickness=1)
         paned.add(viewer_frame)
 
-        tk.Label(viewer_frame, text="FILE CONTENT", bg=TERMINAL_BG, fg=TEXT_GREEN, font=("Courier", 11, "bold")).pack(pady=10)
-        
-        self.viewer = scrolledtext.ScrolledText(viewer_frame, bg=TERMINAL_BG, fg=TEXT_GREEN, 
-                                               font=("Courier", 10), insertbackground=TEXT_GREEN, 
-                                               bd=0, highlightthickness=0)
+        tk.Label(viewer_frame, text="FILE SUMMARY", bg=TERMINAL_BG, fg=TEXT_GREEN, font=("Courier", 11, "bold")).pack(pady=10)
+
+        self.viewer = scrolledtext.ScrolledText(
+            viewer_frame,
+            bg=TERMINAL_BG,
+            fg=TEXT_GREEN,
+            font=("Courier", 10),
+            insertbackground=TEXT_GREEN,
+            bd=0,
+            highlightthickness=0,
+        )
         self.viewer.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
         self.viewer.config(state=tk.DISABLED)
+
+    def _format_report_summary(self, content):
+        module = content.get("module", "unknown")
+        status = content.get("status", "unknown")
+        timestamp = content.get("timestamp", "unknown")
+        targets = content.get("targets", 0)
+        data_summary = content.get("data_summary", {})
+        errors = content.get("errors", [])
+
+        lines = [
+            f"Module: {module}",
+            f"Status: {status}",
+            f"Timestamp: {timestamp}",
+            f"Targets: {targets}",
+            "",
+            "Data Overview:",
+            f"- Field count: {data_summary.get('fields', 0)}",
+            f"- List items total: {data_summary.get('list_items', 0)}",
+            f"- Nested objects: {data_summary.get('nested_objects', 0)}",
+            f"- Scalar fields: {data_summary.get('scalar_fields', 0)}",
+        ]
+
+        if isinstance(errors, list) and errors:
+            lines.extend(["", "Errors:"])
+            lines.extend(f"- {err}" for err in errors)
+
+        return "\n".join(lines)
 
     def _on_file_select(self, event):
         selection = self.listbox.curselection()
         if not selection:
             return
-            
+
         filename = self.listbox.get(selection[0])
         filepath = os.path.join(self.results_dir, filename)
-        
+
         try:
-            with open(filepath, 'r') as f:
+            with open(filepath, "r") as f:
                 content = json.load(f)
-                formatted_json = json.dumps(content, indent=4)
-                
+                formatted_summary = self._format_report_summary(content)
+
                 self.viewer.config(state=tk.NORMAL)
                 self.viewer.delete(1.0, tk.END)
-                self.viewer.insert(tk.END, formatted_json)
+                self.viewer.insert(tk.END, formatted_summary)
                 self.viewer.config(state=tk.DISABLED)
         except Exception as e:
             self.viewer.config(state=tk.NORMAL)
@@ -134,6 +190,7 @@ class ReportsWindow:
             self.viewer.insert(tk.END, f"Error loading file: {e}")
             self.viewer.config(state=tk.DISABLED)
 
+<<<<<<< HEAD
     def _open_html_report(self):
         target_html = None
         
@@ -180,6 +237,8 @@ class ReportsWindow:
                     webbrowser.open(f"file://{abs_path}")
                 except Exception as e:
                     print(f"Failed to open browser via webbrowser: {e}")
+=======
+>>>>>>> 4f6b9a2 (Improve dashboard UI: remove raw JSON output and display formatted summary)
 
 def show_reports(parent, report_data):
     ReportsWindow(parent, report_data)

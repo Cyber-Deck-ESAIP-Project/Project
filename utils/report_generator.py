@@ -2,15 +2,18 @@ import os
 import json
 from datetime import datetime
 
+
 class ReportGenerator:
     """
     Utility class for generating formatted audit reports from scan telemetry.
     Matches the project structure shown in the requested design.
     """
+
     def __init__(self, output_dir="results"):
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
 
+<<<<<<< HEAD
     def _json_to_html(self, data, depth=0):
         if isinstance(data, dict):
             if not data: return "<i>Empty Data</i>"
@@ -49,14 +52,66 @@ class ReportGenerator:
             return f"<a href='{data}' target='_blank'>{data}</a>"
         else:
             return str(data)
+=======
+    def _build_dashboard_html(self, data):
+        payload = data.get("data", {}) if isinstance(data, dict) else {}
+        modules = payload.get("modules_run", [])
+        files = payload.get("result_files", [])
+        breakdown = payload.get("module_breakdown", {})
+
+        modules_html = "".join(f"<li>{m}</li>" for m in modules) or "<li>None</li>"
+        files_html = "".join(f"<li>{f}</li>" for f in files[:25]) or "<li>None</li>"
+
+        rows = []
+        for module, stats in sorted(breakdown.items()):
+            runs = stats.get("runs", 0)
+            success = stats.get("success", 0)
+            error = stats.get("error", 0)
+            entities = stats.get("entities", 0)
+            rows.append(
+                f"<tr><td>{module}</td><td>{runs}</td><td>{success}</td><td>{error}</td><td>{entities}</td></tr>"
+            )
+        table_html = "".join(rows) or "<tr><td colspan='5'>No module activity recorded</td></tr>"
+
+        return f"""
+        <h2>Executive Summary</h2>
+        <ul>
+            <li>Total Operations: {payload.get('total_ops', 0)}</li>
+            <li>Successful Modules: {payload.get('successful_modules', 0)}</li>
+            <li>Failed Modules: {payload.get('failed_modules', 0)}</li>
+            <li>Entities Found: {payload.get('entities_found', 0)}</li>
+        </ul>
+
+        <h2>Module Breakdown</h2>
+        <table>
+            <thead>
+                <tr><th>Module</th><th>Runs</th><th>Success</th><th>Error</th><th>Entities</th></tr>
+            </thead>
+            <tbody>{table_html}</tbody>
+        </table>
+
+        <h2>Modules Run</h2>
+        <ul>{modules_html}</ul>
+
+        <h2>Recent Result Files (max 25)</h2>
+        <ul>{files_html}</ul>
+        """
+
+    def _build_default_html(self, data):
+        return f"""
+        <h2>Raw Telemetry Data</h2>
+        <pre>{json.dumps(data, indent=4)}</pre>
+        """
+>>>>>>> 4f6b9a2 (Improve dashboard UI: remove raw JSON output and display formatted summary)
 
     def generate_html_report(self, data, filename=None):
         """Generates a detailed HTML audit report from the provided telemetry data."""
         if not filename:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"report_{timestamp}.html"
-        
+
         filepath = os.path.join(self.output_dir, filename)
+<<<<<<< HEAD
         
         module_name = data.get('module', 'Unknown')
         status = data.get('status', 'Completed')
@@ -149,13 +204,49 @@ class ReportGenerator:
 </html>
 """
         
+=======
+        module_name = data.get("module", "Unknown") if isinstance(data, dict) else "Unknown"
+
+        body_html = (
+            self._build_dashboard_html(data)
+            if module_name == "dashboard"
+            else self._build_default_html(data)
+        )
+
+        html_content = f"""
+        <html>
+        <head>
+            <title>CyberDeck Audit Report</title>
+            <style>
+                body {{ font-family: 'Courier New', Courier, monospace; background-color: #0D1117; color: #C9D1D9; padding: 20px; }}
+                h1 {{ color: #00FFFF; border-bottom: 1px solid #30363D; }}
+                pre {{ background-color: #010409; padding: 15px; border: 1px solid #30363D; overflow: auto; }}
+                .status {{ color: #4ADE80; font-weight: bold; }}
+                ul {{ line-height: 1.5; }}
+                table {{ border-collapse: collapse; width: 100%; margin-top: 8px; }}
+                th, td {{ border: 1px solid #30363D; padding: 8px; text-align: left; }}
+                th {{ color: #00FFFF; }}
+            </style>
+        </head>
+        <body>
+            <h1>CyberDeck OS // Audit Report</h1>
+            <p>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            <p>Module: <span class="status">{module_name}</span></p>
+            <hr>
+            {body_html}
+        </body>
+        </html>
+        """
+
+>>>>>>> 4f6b9a2 (Improve dashboard UI: remove raw JSON output and display formatted summary)
         try:
-            with open(filepath, 'w') as f:
+            with open(filepath, "w") as f:
                 f.write(html_content)
             return filepath
         except Exception as e:
             print(f"[ReportGenerator] Error saving HTML report: {e}")
             return None
+
 
 def generate_report(data):
     """Helper function to quickly generate an HTML report."""
