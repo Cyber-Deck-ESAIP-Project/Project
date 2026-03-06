@@ -23,11 +23,100 @@ class ReportGenerator:
         text = str(value).strip()
         return escape(text) if text else "-"
 
+    def _build_baseline_comparison_html(self, baseline: Dict[str, Any]) -> str:
+        if not isinstance(baseline, dict) or not baseline:
+            return ""
+
+        summary = baseline.get("summary", {})
+        new_entities = baseline.get("new_entities", [])
+        removed_entities = baseline.get("removed_entities", [])
+        changed_modules = baseline.get("changed_module_results", [])
+
+        new_rows = []
+        for item in new_entities if isinstance(new_entities, list) else []:
+            if not isinstance(item, dict):
+                continue
+            new_rows.append(
+                "<tr>"
+                f"<td>{self._clean_text(item.get('module', '-'))}</td>"
+                f"<td>{self._safe_int(item.get('count', 0))}</td>"
+                "</tr>"
+            )
+        new_table = "".join(new_rows) or "<tr><td colspan='2' class='muted'>No new entities detected.</td></tr>"
+
+        removed_rows = []
+        for item in removed_entities if isinstance(removed_entities, list) else []:
+            if not isinstance(item, dict):
+                continue
+            removed_rows.append(
+                "<tr>"
+                f"<td>{self._clean_text(item.get('module', '-'))}</td>"
+                f"<td>{self._safe_int(item.get('count', 0))}</td>"
+                "</tr>"
+            )
+        removed_table = "".join(removed_rows) or "<tr><td colspan='2' class='muted'>No removed entities detected.</td></tr>"
+
+        changed_rows = []
+        for item in changed_modules if isinstance(changed_modules, list) else []:
+            if not isinstance(item, dict):
+                continue
+            module_name = self._clean_text(item.get("module", "-"))
+            changes = item.get("changes", {})
+            if not isinstance(changes, dict) or not changes:
+                continue
+            changed_fields = ", ".join(self._clean_text(field) for field in sorted(changes.keys()))
+            changed_rows.append(
+                "<tr>"
+                f"<td>{module_name}</td>"
+                f"<td>{changed_fields if changed_fields else '-'}</td>"
+                "</tr>"
+            )
+        changed_table = "".join(changed_rows) or "<tr><td colspan='2' class='muted'>No module changes detected.</td></tr>"
+
+        return f"""
+        <section class="card">
+            <h2>Baseline Comparison</h2>
+            <p class="meta-row">
+                Baseline Status: <strong>{self._clean_text(baseline.get('baseline_status', 'unknown')).title()}</strong>
+                | Baseline Created: {self._clean_text(baseline.get('baseline_created_at', '-'))}
+            </p>
+            <div class="metric-grid baseline-metrics">
+                <div class="metric"><span class="label">New Entities</span><span class="value">{self._safe_int(summary.get('new_entities_total', 0))}</span></div>
+                <div class="metric"><span class="label">Removed Entities</span><span class="value">{self._safe_int(summary.get('removed_entities_total', 0))}</span></div>
+                <div class="metric"><span class="label">Changed Modules</span><span class="value">{self._safe_int(summary.get('changed_modules_total', 0))}</span></div>
+            </div>
+            <div class="baseline-grid">
+                <div class="table-wrap">
+                    <h3>New Entities Since Baseline</h3>
+                    <table>
+                        <thead><tr><th>Module</th><th>Count</th></tr></thead>
+                        <tbody>{new_table}</tbody>
+                    </table>
+                </div>
+                <div class="table-wrap">
+                    <h3>Removed Entities Since Baseline</h3>
+                    <table>
+                        <thead><tr><th>Module</th><th>Count</th></tr></thead>
+                        <tbody>{removed_table}</tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <h3>Changed Module Results</h3>
+                <table>
+                    <thead><tr><th>Module</th><th>Changed Fields</th></tr></thead>
+                    <tbody>{changed_table}</tbody>
+                </table>
+            </div>
+        </section>
+        """
+
     def _build_dashboard_html(self, data: Dict[str, Any]) -> str:
         payload = data.get("data", {}) if isinstance(data, dict) else {}
         modules = payload.get("modules_run", [])
         breakdown = payload.get("module_breakdown", {})
         scan_results = payload.get("scan_results", [])
+        baseline_comparison = payload.get("Baseline Comparison", {})
 
         modules_html = "".join(f"<span class='chip'>{self._clean_text(module)}</span>" for module in modules)
         if not modules_html:
@@ -68,6 +157,8 @@ class ReportGenerator:
             "<tr><td colspan='6' class='muted'>No scan results available.</td></tr>"
         )
 
+        baseline_html = self._build_baseline_comparison_html(baseline_comparison)
+
         return f"""
         <section class="card">
             <h2>Executive Summary</h2>
@@ -91,6 +182,8 @@ class ReportGenerator:
                 </table>
             </div>
         </section>
+
+        {baseline_html}
 
         <section class="card">
             <h2>Scan Results</h2>
@@ -180,6 +273,7 @@ class ReportGenerator:
         }}
         .header h1 {{ margin: 0; font-size: 1.9rem; letter-spacing: 0.03em; }}
         .meta {{ margin-top: 8px; color: var(--text-muted); font-size: 0.95rem; }}
+        .meta-row {{ color: var(--text-muted); margin: 0 0 14px 0; font-size: 0.92rem; }}
         .card {{
             background: var(--bg-panel);
             border: 1px solid var(--border);
@@ -202,6 +296,7 @@ class ReportGenerator:
         }}
         .metric .label {{ display: block; color: var(--text-muted); font-size: 0.85rem; }}
         .metric .value {{ display: block; margin-top: 4px; font-size: 1.2rem; font-weight: 700; color: var(--accent); }}
+        .baseline-metrics .metric .value {{ color: #93c5fd; }}
         .chips {{ display: flex; flex-wrap: wrap; gap: 8px; }}
         .chip {{
             border: 1px solid var(--border);
@@ -213,6 +308,18 @@ class ReportGenerator:
         }}
         .chip-empty {{ color: var(--text-muted); background: rgba(255, 255, 255, 0.03); }}
         .table-wrap {{ overflow-x: auto; }}
+        .baseline-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 12px;
+            margin-bottom: 12px;
+        }}
+        h3 {{
+            margin: 0 0 10px 0;
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }}
         table {{ width: 100%; border-collapse: collapse; min-width: 760px; }}
         th, td {{
             padding: 10px 12px;

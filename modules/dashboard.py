@@ -10,6 +10,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils.result_handler import create_result  # type: ignore
 from utils.report_generator import generate_report  # type: ignore
 
+BASELINE_FILENAME = "baseline.json"
+
 
 def _safe_int(value: Any) -> int:
     try:
@@ -167,12 +169,141 @@ def _rebuild_breakdown_from_scan_results(scan_results: List[Dict[str, Any]]) -> 
     return breakdown
 
 
+def _build_module_snapshot(scan_results: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    snapshot: Dict[str, Dict[str, Any]] = {}
+    for row in scan_results:
+        module = str(row.get("module_name", "unknown"))
+        if module not in snapshot:
+            snapshot[module] = {
+                "runs": 0,
+                "success": 0,
+                "error": 0,
+                "targets_found": 0,
+                "error_count": 0,
+                "entities_found": 0,
+                "last_timestamp": "Unknown",
+            }
+
+        module_row = snapshot[module]
+        module_row["runs"] += 1
+        module_row["targets_found"] += _safe_int(row.get("targets_found"))
+        module_row["error_count"] += _safe_int(row.get("error_count"))
+        module_row["entities_found"] += _safe_int(row.get("entities_found"))
+
+        status = _normalize_status(row.get("status", "unknown"))
+        if status == "success":
+            module_row["success"] += 1
+        elif status == "error":
+            module_row["error"] += 1
+
+        ts = str(row.get("timestamp", "Unknown"))
+        if ts and ts != "Unknown" and ts > str(module_row.get("last_timestamp", "Unknown")):
+            module_row["last_timestamp"] = ts
+
+    return snapshot
+
+
+def _build_entity_totals_by_module(module_snapshot: Dict[str, Dict[str, Any]]) -> Dict[str, int]:
+    return {
+        module: _safe_int(stats.get("entities_found", 0))
+        for module, stats in module_snapshot.items()
+    }
+
+
+def _build_baseline_payload(scan_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    module_snapshot = _build_module_snapshot(scan_results)
+    return {
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "module_snapshot": module_snapshot,
+        "entity_totals_by_module": _build_entity_totals_by_module(module_snapshot),
+        "total_entities": sum(_safe_int(stats.get("entities_found")) for stats in module_snapshot.values()),
+        "total_rows": len(scan_results),
+    }
+
+
+def _write_baseline_file(baseline_path: str, baseline_payload: Dict[str, Any]) -> bool:
+    try:
+        with open(baseline_path, "w") as f:
+            json.dump(baseline_payload, f, indent=4)
+        return True
+    except Exception:
+        return False
+
+
+def _load_baseline_file(baseline_path: str) -> Dict[str, Any]:
+    with open(baseline_path, "r") as f:
+        loaded = json.load(f)
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _compare_against_baseline(
+    baseline_payload: Dict[str, Any], current_scan_results: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    current_snapshot = _build_module_snapshot(current_scan_results)
+    current_entities = _build_entity_totals_by_module(current_snapshot)
+
+    baseline_snapshot_raw = baseline_payload.get("module_snapshot", {})
+    baseline_snapshot = baseline_snapshot_raw if isinstance(baseline_snapshot_raw, dict) else {}
+
+    baseline_entities_raw = baseline_payload.get("entity_totals_by_module", {})
+    baseline_entities = baseline_entities_raw if isinstance(baseline_entities_raw, dict) else {}
+
+    all_entity_modules = sorted(set(current_entities.keys()) | set(baseline_entities.keys()))
+    new_entities = []
+    removed_entities = []
+
+    for module in all_entity_modules:
+        current_count = _safe_int(current_entities.get(module, 0))
+        baseline_count = _safe_int(baseline_entities.get(module, 0))
+        delta = current_count - baseline_count
+
+        if delta > 0:
+            new_entities.append({"module": module, "count": delta})
+        elif delta < 0:
+            removed_entities.append({"module": module, "count": abs(delta)})
+
+    changed_module_results = []
+    all_modules = sorted(set(current_snapshot.keys()) | set(baseline_snapshot.keys()))
+    fields = ("runs", "success", "error", "targets_found", "error_count", "entities_found")
+    for module in all_modules:
+        before_raw = baseline_snapshot.get(module, {})
+        after_raw = current_snapshot.get(module, {})
+        before = before_raw if isinstance(before_raw, dict) else {}
+        after = after_raw if isinstance(after_raw, dict) else {}
+
+        changed_fields = {}
+        for field in fields:
+            previous = _safe_int(before.get(field, 0))
+            current = _safe_int(after.get(field, 0))
+            if previous != current:
+                changed_fields[field] = {"previous": previous, "current": current}
+
+        if changed_fields:
+            changed_module_results.append({
+                "module": module,
+                "changes": changed_fields,
+            })
+
+    return {
+        "baseline_created_at": str(baseline_payload.get("created_at", "unknown")),
+        "new_entities": new_entities,
+        "removed_entities": removed_entities,
+        "changed_module_results": changed_module_results,
+        "summary": {
+            "new_entities_total": sum(_safe_int(item.get("count")) for item in new_entities),
+            "removed_entities_total": sum(_safe_int(item.get("count")) for item in removed_entities),
+            "changed_modules_total": len(changed_module_results),
+        },
+    }
+
+
 def run(config, callback=None, **kwargs):
     if callback:
         callback("[*] Aggregating scan telemetry for executive summary...")
 
     results_dir = config.get("system", {}).get("results_dir", "results")
     history_file = "logs/history.json"
+    baseline_path = os.path.join(results_dir, BASELINE_FILENAME)
 
     os.makedirs(results_dir, exist_ok=True)
 
@@ -252,7 +383,10 @@ def run(config, callback=None, **kwargs):
     # 2. Include orphaned json files in the results dir
     if os.path.exists(results_dir):
         try:
-            files = [f for f in os.listdir(results_dir) if f.endswith(".json")]
+            files = [
+                f for f in os.listdir(results_dir)
+                if f.endswith(".json") and f != BASELINE_FILENAME
+            ]
             for f in files:
                 if f not in result_files:
                     result_files.append(f)
@@ -290,6 +424,51 @@ def run(config, callback=None, **kwargs):
     if callback:
         callback(f"[+] Aggregated {len(scan_results)} readable scan rows from {len(result_files)} result files.")
 
+    baseline_comparison: Dict[str, Any]
+    if not os.path.exists(baseline_path):
+        baseline_payload = _build_baseline_payload(scan_results)
+        persisted = _write_baseline_file(baseline_path, baseline_payload)
+        baseline_comparison = {
+            "baseline_status": "created" if persisted else "create_failed",
+            "baseline_file": baseline_path,
+            "baseline_created_at": baseline_payload.get("created_at", "unknown"),
+            "new_entities": [],
+            "removed_entities": [],
+            "changed_module_results": [],
+            "summary": {
+                "new_entities_total": 0,
+                "removed_entities_total": 0,
+                "changed_modules_total": 0,
+            },
+        }
+        if callback:
+            callback("[+] Baseline initialized from current aggregated scan results.")
+    else:
+        try:
+            loaded_baseline = _load_baseline_file(baseline_path)
+            baseline_comparison = _compare_against_baseline(loaded_baseline, scan_results)
+            baseline_comparison["baseline_status"] = "loaded"
+            baseline_comparison["baseline_file"] = baseline_path
+            baseline_comparison["compared_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if callback:
+                callback("[+] Baseline comparison completed.")
+        except Exception as e:
+            baseline_comparison = {
+                "baseline_status": "load_failed",
+                "baseline_file": baseline_path,
+                "error": str(e),
+                "new_entities": [],
+                "removed_entities": [],
+                "changed_module_results": [],
+                "summary": {
+                    "new_entities_total": 0,
+                    "removed_entities_total": 0,
+                    "changed_modules_total": 0,
+                },
+            }
+            if callback:
+                callback(f"[!] Baseline comparison failed: {e}")
+
     summary = {
         "total_ops": total_ops,
         "successful_modules": successful_modules,
@@ -299,6 +478,7 @@ def run(config, callback=None, **kwargs):
         "module_breakdown": module_breakdown,
         "result_files": result_files,
         "scan_results": scan_results,
+        "Baseline Comparison": baseline_comparison,
     }
 
     result = create_result("dashboard", "success", data=summary)
