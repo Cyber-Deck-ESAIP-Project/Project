@@ -142,7 +142,7 @@
     <div class="header">
         <h1>EXECUTIVE REPORT SUMMARY</h1>
         <div>
-            <a href="javascript:loadGlobalReport()" class="btn">[ GLOBAL DASHBOARD REPORT ]</a>
+            <a href="/reports" class="btn">[ GLOBAL DASHBOARD REPORT ]</a>
             <a href="/" class="btn" style="margin-left: 10px;">[ REturn to TERMINAL ]</a>
         </div>
     </div>
@@ -203,11 +203,17 @@
                 frame.style.display = 'block';
             };
 
-            frame.src = `/api/reports/${filename}`;
+            frame.src = `/report/${encodeURIComponent(filename)}`;
         }
 
         function loadGlobalReport() {
-            document.querySelectorAll('.file-item').forEach(el => el.classList.remove('active'));
+            // Hard reset the reports view and clear selected report state.
+            window.location.href = '/reports';
+        }
+
+        // Init
+        fetchFiles();
+        (function initGlobalDashboard() {
             const frame = document.getElementById('reportFrame');
             const loader = document.getElementById('loader');
 
@@ -219,12 +225,8 @@
                 frame.style.display = 'block';
             };
 
-            frame.src = `/api/reports/global`;
-        }
-
-        // Init
-        fetchFiles();
-        loadGlobalReport();
+            frame.src = '{{ global_report_url }}?t=' + Date.now();
+        })();
     </script>
 </body>
 
