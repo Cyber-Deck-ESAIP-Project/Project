@@ -1,65 +1,127 @@
 # 🖧 CyberDeck OS v2.0 - Operations Manual
 
-Welcome to the **Event-Driven MVC** evolution of CyberDeck OS. This guide details how to test and verify every module in the arsenal in real-time safely.
+Welcome to the **Event-Driven MVC** evolution of CyberDeck OS. This guide covers setup, module usage, and the current executive reporting pipeline.
 
----
+## Overview
+CyberDeck OS is a modular security operations platform for real-time monitoring, active auditing, and post-scan analytics.
 
-## 🚀 System Boot
+The current implementation adds a reporting workflow centered on:
+- An Executive Dashboard for aggregated scan visibility
+- Automatic baseline creation from the first aggregated scan set
+- Baseline comparison on later runs to detect deltas
+- Readable HTML reports instead of raw JSON telemetry dumps
+- A web interface for browsing global and per-result reports
 
-To launch the operating system and spin up the EventBus, Background Schedulers, and UI Routers:
+## Features
+### Core Modules
+1. Passive Monitor (`modules/passive_monitor.py`)
+2. ARP Monitor (`modules/arp_monitor.py`)
+3. LAN Scanner (`modules/lan_scan.py`)
+4. 802.11 WiFi Audit (`modules/wifi_audit.py`)
+5. Bluetooth Recon (`modules/bluetooth_recon.py`)
+6. TLS Audit (`modules/tls_audit.py`)
+7. Pentest Tools (`modules/pentest_tools.py`)
+8. AI Anomaly Detection (`modules/anomaly_detect.py`)
+9. Reports & Analytics (`modules/dashboard.py`)
 
+### Executive Dashboard Features
+- Aggregated operations summary across stored scan results
+- Module-level breakdown (runs, success, error, entities)
+- Normalized scan table for readable historical review
+- Built-in baseline comparison block for change tracking
+- Web route integration for dashboard and per-file report rendering
+
+## Installation
+1. Create and activate a virtual environment.
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+3. Start CyberDeck OS:
 ```bash
 source .venv/bin/activate
 sudo python3 launcher.py
 ```
-*(Running with `sudo` is highly recommended, as packet sniffing, ping sweeps, and Bluetooth discovery often require root hardware privileges).*
 
----
+`sudo` is recommended for modules requiring privileged network access (sniffing, scans, Bluetooth).
 
-## 🔍 Modules Reference
+## Usage
+1. Launch from project root:
+```bash
+source .venv/bin/activate
+sudo python3 launcher.py
+```
+2. Run one or more security modules from the main interface.
+3. Open the reports dashboard in a browser:
+   `http://127.0.0.1:5000/reports`
+4. In the reports page:
+- Use the global report view to see the Executive Dashboard.
+- Open individual result reports from the available result file list.
 
-### 1. Passive Monitor (`modules/passive_monitor.py`)
-Multi-protocol Scapy packet capture. Detects ARP spoofing, TCP port scans, and ICMP floods in real time. Receive-only mode — no packets transmitted. Requires root.
+## Dashboard & Reports
+### Executive Dashboard Metrics
+The global dashboard includes:
+- Total Operations
+- Successful Modules
+- Failed Modules
+- Entities Found
+- Modules Run chips/list
+- Module Breakdown table with:
+  - Module
+  - Runs
+  - Success
+  - Error
+  - Entities
+- Scan Results table with:
+  - Module Name
+  - Status
+  - Timestamp
+  - Targets Found
+  - Error Count
+  - Entities Found
 
-### 2. ARP Monitor (`modules/arp_monitor.py`)
-Dedicated ARP traffic auditor. Builds an IP→MAC trust table and flags any host that changes its MAC address — a key MITM indicator. Uses a BPF "arp" filter for low overhead. Requires root.
+### How Reports Are Generated
+Report generation is driven by historical data and result files:
+1. `modules/dashboard.py` reads `logs/history.json` when available.
+2. It creates normalized per-run JSON summary files in `results/` if missing.
+3. It also includes existing/orphaned `results/*.json` files (excluding `results/baseline.json`).
+4. All result JSON records are normalized into readable dashboard rows.
+5. `utils/report_generator.py` renders HTML reports from the normalized payload.
+6. `/reports` rebuilds and serves the global dashboard view.
+7. `/report/<filename>` renders an individual report from a stored `results/*.json` file.
 
-### 3. LAN Scanner (`modules/lan_scan.py`)
-Active network sweeps to identify alive hosts and open ports via `python-nmap`.
+## Baseline Detection
+Baseline logic is implemented in `modules/dashboard.py` using `results/baseline.json`.
 
-### 4. 802.11 WiFi Audit (`modules/wifi_audit.py`)
-Passive scanning of wireless networks for security profiling via `nmcli`. Flags open and WEP-encrypted networks.
+### Baseline Creation (First Dashboard Run)
+- If `results/baseline.json` does not exist, CyberDeck creates it from the current aggregated scan results.
+- Baseline payload includes:
+  - `created_at`
+  - `module_snapshot` (runs/success/error/targets/error_count/entities/last_timestamp)
+  - `entity_totals_by_module`
+  - `total_entities`
+  - `total_rows`
 
-### 5. Bluetooth Recon (`modules/bluetooth_recon.py`)
-Discovery of nearby Bluetooth devices and hardware profiles via `bluetoothctl`.
+### Baseline Comparison (Future Runs)
+- If baseline exists, current aggregated results are compared against the stored baseline snapshot.
+- Comparison output includes:
+  - `new_entities` by module
+  - `removed_entities` by module
+  - `changed_module_results` with changed fields
+  - summary totals for new, removed, and changed counts
+- These values are rendered in the report under **Baseline Comparison**.
 
-### 6. TLS Audit (`modules/tls_audit.py`)
-TLS certificate health checker for HTTPS hosts. Accepts a single IP, hostname, or subnet from the target field. Detects expired certs, short expiry windows, self-signed certs, hostname mismatches, and deprecated TLS versions. Uses only stdlib `ssl` — no new dependencies.
-
-### 7. Pentest Tools (`modules/pentest_tools.py`)
-Integration with Metasploit MSFRPC. Falls back to a port-to-exploit simulation if no daemon is running.
-
-### 8. AI Anomaly Detection (`modules/anomaly_detect.py`)
-Heuristic analysis of session history across 7 rules. Optional Gemini AI narrative via `GEMINI_API_KEY`.
-
-### 9. Reports & Analytics (`modules/dashboard.py`)
-Executive summary generation and result visualization. Auto-generates an HTML report on every run.
-
----
-
-## 📊 Documentation
-Detailed technical guides are available in the `docs/` directory:
+## Documentation
+Detailed technical guides are available in `docs/`:
 - [Architecture Overview](docs/architecture.md)
 - [Installation Guide](docs/installation.md)
 - [Development Workflow](docs/workflow.md)
 - [User Guide](docs/user_guide.md)
 
----
-
-## ⚙️ Deployment (Raspberry Pi)
-To turn a Raspberry Pi into an autonomous CyberDeck, use the provided scripts:
-1. Initialize environment: `./scripts/setup_env.sh`
-2. Deploy latest code: `./scripts/deploy.sh`
+## Deployment (Raspberry Pi)
+To turn a Raspberry Pi into an autonomous CyberDeck:
+1. `./scripts/setup_env.sh`
+2. `./scripts/deploy.sh`
 
 ### End of Line.
 *Happy Hunting.*
