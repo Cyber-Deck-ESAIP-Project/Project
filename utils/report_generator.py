@@ -1,244 +1,251 @@
 import os
-import json
 from datetime import datetime
+from html import escape
+from typing import Any, Dict
 
 
 class ReportGenerator:
-    """
-    Utility class for generating formatted audit reports from scan telemetry.
-    Matches the project structure shown in the requested design.
-    """
+    """Utility class for generating formatted audit reports from scan telemetry."""
 
-    def __init__(self, output_dir="results"):
+    def __init__(self, output_dir: str = "results"):
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
 
-<<<<<<< HEAD
-    def _json_to_html(self, data, depth=0):
-        if isinstance(data, dict):
-            if not data: return "<i>Empty Data</i>"
-            html = "<table class='data-table'>"
-            for k, v in data.items():
-                html += f"<tr><th>{k}</th><td>{self._json_to_html(v, depth+1)}</td></tr>"
-            html += "</table>"
-            return html
-        elif isinstance(data, list):
-            if not data: return "<i>Empty List</i>"
-            # If list of dicts with similar keys, make a multi-column table
-            if all(isinstance(x, dict) for x in data) and len(data) > 0:
-                keys = []
-                for item in data:
-                    for k in item.keys():
-                        if k not in keys: keys.append(k)
-                if len(keys) <= 6:
-                    html = "<div style='overflow-x: auto;'><table class='data-table list-table'><tr>"
-                    for k in keys: html += f"<th>{k}</th>"
-                    html += "</tr>"
-                    for item in data:
-                        html += "<tr>"
-                        for k in keys:
-                            html += f"<td>{self._json_to_html(item.get(k, ''), depth+1)}</td>"
-                        html += "</tr>"
-                    html += "</table></div>"
-                    return html
-            
-            # Otherwise simple list
-            html = "<ul>"
-            for item in data:
-                html += f"<li>{self._json_to_html(item, depth+1)}</li>"
-            html += "</ul>"
-            return html
-        elif isinstance(data, str) and data.startswith("http"):
-            return f"<a href='{data}' target='_blank'>{data}</a>"
-        else:
-            return str(data)
-=======
-    def _build_dashboard_html(self, data):
+    def _safe_int(self, value: Any) -> int:
+        try:
+            return int(value)
+        except Exception:
+            return 0
+
+    def _clean_text(self, value: Any) -> str:
+        if value is None:
+            return "-"
+        text = str(value).strip()
+        return escape(text) if text else "-"
+
+    def _build_dashboard_html(self, data: Dict[str, Any]) -> str:
         payload = data.get("data", {}) if isinstance(data, dict) else {}
         modules = payload.get("modules_run", [])
-        files = payload.get("result_files", [])
         breakdown = payload.get("module_breakdown", {})
+        scan_results = payload.get("scan_results", [])
 
-        modules_html = "".join(f"<li>{m}</li>" for m in modules) or "<li>None</li>"
-        files_html = "".join(f"<li>{f}</li>" for f in files[:25]) or "<li>None</li>"
+        modules_html = "".join(f"<span class='chip'>{self._clean_text(module)}</span>" for module in modules)
+        if not modules_html:
+            modules_html = "<span class='chip chip-empty'>No modules</span>"
 
-        rows = []
+        breakdown_rows = []
         for module, stats in sorted(breakdown.items()):
-            runs = stats.get("runs", 0)
-            success = stats.get("success", 0)
-            error = stats.get("error", 0)
-            entities = stats.get("entities", 0)
-            rows.append(
-                f"<tr><td>{module}</td><td>{runs}</td><td>{success}</td><td>{error}</td><td>{entities}</td></tr>"
+            if not isinstance(stats, dict):
+                continue
+            breakdown_rows.append(
+                "<tr>"
+                f"<td>{self._clean_text(module)}</td>"
+                f"<td>{self._safe_int(stats.get('runs', 0))}</td>"
+                f"<td>{self._safe_int(stats.get('success', 0))}</td>"
+                f"<td>{self._safe_int(stats.get('error', 0))}</td>"
+                f"<td>{self._safe_int(stats.get('entities', 0))}</td>"
+                "</tr>"
             )
-        table_html = "".join(rows) or "<tr><td colspan='5'>No module activity recorded</td></tr>"
+        breakdown_table = "".join(breakdown_rows) or (
+            "<tr><td colspan='5' class='muted'>No module activity recorded.</td></tr>"
+        )
+
+        scan_rows = []
+        for row in scan_results if isinstance(scan_results, list) else []:
+            if not isinstance(row, dict):
+                continue
+            scan_rows.append(
+                "<tr>"
+                f"<td>{self._clean_text(row.get('module_name', '-'))}</td>"
+                f"<td>{self._clean_text(row.get('status', '-')).title()}</td>"
+                f"<td>{self._clean_text(row.get('timestamp', '-'))}</td>"
+                f"<td>{self._safe_int(row.get('targets_found', 0))}</td>"
+                f"<td>{self._safe_int(row.get('error_count', 0))}</td>"
+                f"<td>{self._safe_int(row.get('entities_found', 0))}</td>"
+                "</tr>"
+            )
+        scan_table = "".join(scan_rows) or (
+            "<tr><td colspan='6' class='muted'>No scan results available.</td></tr>"
+        )
 
         return f"""
-        <h2>Executive Summary</h2>
-        <ul>
-            <li>Total Operations: {payload.get('total_ops', 0)}</li>
-            <li>Successful Modules: {payload.get('successful_modules', 0)}</li>
-            <li>Failed Modules: {payload.get('failed_modules', 0)}</li>
-            <li>Entities Found: {payload.get('entities_found', 0)}</li>
-        </ul>
+        <section class="card">
+            <h2>Executive Summary</h2>
+            <div class="metric-grid">
+                <div class="metric"><span class="label">Total Operations</span><span class="value">{self._safe_int(payload.get('total_ops', 0))}</span></div>
+                <div class="metric"><span class="label">Successful Modules</span><span class="value">{self._safe_int(payload.get('successful_modules', 0))}</span></div>
+                <div class="metric"><span class="label">Failed Modules</span><span class="value">{self._safe_int(payload.get('failed_modules', 0))}</span></div>
+                <div class="metric"><span class="label">Entities Found</span><span class="value">{self._safe_int(payload.get('entities_found', 0))}</span></div>
+            </div>
+            <div class="chips">{modules_html}</div>
+        </section>
 
-        <h2>Module Breakdown</h2>
-        <table>
-            <thead>
-                <tr><th>Module</th><th>Runs</th><th>Success</th><th>Error</th><th>Entities</th></tr>
-            </thead>
-            <tbody>{table_html}</tbody>
-        </table>
+        <section class="card">
+            <h2>Module Breakdown</h2>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Module</th><th>Runs</th><th>Success</th><th>Error</th><th>Entities</th></tr>
+                    </thead>
+                    <tbody>{breakdown_table}</tbody>
+                </table>
+            </div>
+        </section>
 
-        <h2>Modules Run</h2>
-        <ul>{modules_html}</ul>
-
-        <h2>Recent Result Files (max 25)</h2>
-        <ul>{files_html}</ul>
+        <section class="card">
+            <h2>Scan Results</h2>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Module Name</th>
+                            <th>Status</th>
+                            <th>Timestamp</th>
+                            <th>Targets Found</th>
+                            <th>Error Count</th>
+                            <th>Entities Found</th>
+                        </tr>
+                    </thead>
+                    <tbody>{scan_table}</tbody>
+                </table>
+            </div>
+        </section>
         """
 
-    def _build_default_html(self, data):
+    def _build_default_html(self, data: Dict[str, Any]) -> str:
+        payload = data.get("data", {}) if isinstance(data, dict) else {}
         return f"""
-        <h2>Raw Telemetry Data</h2>
-        <pre>{json.dumps(data, indent=4)}</pre>
+        <section class="card">
+            <h2>Operation Summary</h2>
+            <div class="table-wrap">
+                <table>
+                    <tbody>
+                        <tr><th>Module</th><td>{self._clean_text(data.get('module', 'Unknown'))}</td></tr>
+                        <tr><th>Status</th><td>{self._clean_text(data.get('status', 'Unknown')).title()}</td></tr>
+                        <tr><th>Timestamp</th><td>{self._clean_text(payload.get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S')))}</td></tr>
+                        <tr><th>Targets Found</th><td>{self._safe_int(payload.get('targets', 0))}</td></tr>
+                        <tr><th>Error Count</th><td>{self._safe_int(payload.get('error_count', 0))}</td></tr>
+                        <tr><th>Entities Found</th><td>{self._safe_int(payload.get('entities_found', payload.get('targets', 0)))}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
         """
->>>>>>> 4f6b9a2 (Improve dashboard UI: remove raw JSON output and display formatted summary)
 
-    def generate_html_report(self, data, filename=None):
-        """Generates a detailed HTML audit report from the provided telemetry data."""
+    def generate_html_report(self, data: Dict[str, Any], filename: str = None) -> str:
+        """Generates a readable HTML audit report from telemetry summary data."""
         if not filename:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"report_{timestamp}.html"
 
         filepath = os.path.join(self.output_dir, filename)
-<<<<<<< HEAD
-        
-        module_name = data.get('module', 'Unknown')
-        status = data.get('status', 'Completed')
-        
-        # Build the dynamic HTML
-        parsed_html = self._json_to_html(data.get('data', data))
-        raw_json = json.dumps(data, indent=4)
-        
+        module_name = data.get("module", "Unknown") if isinstance(data, dict) else "Unknown"
+        status = data.get("status", "Unknown") if isinstance(data, dict) else "Unknown"
+
+        body_html = self._build_dashboard_html(data) if module_name == "dashboard" else self._build_default_html(data)
+
         html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CyberDeck Audit Report // {module_name}</title>
+    <title>CyberDeck Executive Report</title>
     <style>
         :root {{
-            --bg-main: #0a0e17;
-            --bg-card: #111827;
-            --border: #1f2937;
-            --text-main: #e5e7eb;
-            --text-muted: #9ca3af;
-            --accent: #00ffff;
-            --success: #10b981;
+            --bg-main: #09111f;
+            --bg-panel: #0f1a2f;
+            --bg-header: #14233d;
+            --border: #1f3a5a;
+            --text-main: #e2ebf6;
+            --text-muted: #97a8be;
+            --accent: #4fd1c5;
+            --danger: #f87171;
+            --success: #34d399;
         }}
-        body {{ 
-            font-family: 'Inter', system-ui, -apple-system, sans-serif; 
-            background-color: var(--bg-main); 
-            color: var(--text-main); 
-            padding: 2rem; 
+        * {{ box-sizing: border-box; }}
+        body {{
             margin: 0;
-            line-height: 1.5;
+            padding: 24px;
+            color: var(--text-main);
+            background: radial-gradient(circle at top, #12213a 0%, var(--bg-main) 48%);
+            font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
         }}
-        .container {{ max-width: 1200px; margin: 0 auto; }}
-        .header {{ 
-            border-bottom: 2px solid var(--border); 
-            padding-bottom: 1rem; 
-            margin-bottom: 2rem; 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: flex-end; 
+        .container {{ max-width: 1280px; margin: 0 auto; }}
+        .header {{
+            background: linear-gradient(120deg, var(--bg-header), #183459);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 20px 24px;
+            margin-bottom: 20px;
         }}
-        .header h1 {{ color: var(--accent); margin: 0; font-size: 2.5rem; letter-spacing: -0.05em; }}
-        .meta-info {{ color: var(--text-muted); font-family: monospace; font-size: 0.95rem; text-align: right; }}
-        .status {{ color: var(--success); font-weight: 600; text-transform: uppercase; }}
-        .card {{ 
-            background: var(--bg-card); 
-            border: 1px solid var(--border); 
-            border-radius: 8px; 
-            padding: 1.5rem; 
-            margin-bottom: 2rem; 
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); 
+        .header h1 {{ margin: 0; font-size: 1.9rem; letter-spacing: 0.03em; }}
+        .meta {{ margin-top: 8px; color: var(--text-muted); font-size: 0.95rem; }}
+        .card {{
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
         }}
-        .card h2 {{ margin-top: 0; color: #fff; font-size: 1.25rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }}
-        table.data-table {{ width: 100%; border-collapse: collapse; font-family: monospace; font-size: 0.95rem; border-radius: 6px; overflow: hidden; }}
-        table.data-table th, table.data-table td {{ padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }}
-        table.data-table th {{ background-color: rgba(255, 255, 255, 0.05); color: var(--accent); font-weight: 500; width: 30%; }}
-        table.data-table tr:hover {{ background-color: rgba(255, 255, 255, 0.02); }}
-        table.list-table th {{ background-color: rgba(255, 255, 255, 0.05); color: var(--text-muted); text-transform: uppercase; font-size: 0.8rem; width: auto; }}
-        ul {{ margin: 0; padding-left: 1.5rem; }}
-        li {{ margin-bottom: 0.25rem; }}
-        .raw-dump {{ background-color: rgba(0,0,0,0.5); padding: 1rem; border-radius: 6px; border: 1px solid var(--border); overflow-x: auto; font-size: 0.85rem; color: var(--text-muted); }}
-        a {{ color: var(--accent); text-decoration: none; }}
-        a:hover {{ text-decoration: underline; }}
+        h2 {{ margin: 0 0 14px 0; font-size: 1.1rem; }}
+        .metric-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 10px;
+            margin-bottom: 14px;
+        }}
+        .metric {{
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.02);
+            padding: 10px 12px;
+        }}
+        .metric .label {{ display: block; color: var(--text-muted); font-size: 0.85rem; }}
+        .metric .value {{ display: block; margin-top: 4px; font-size: 1.2rem; font-weight: 700; color: var(--accent); }}
+        .chips {{ display: flex; flex-wrap: wrap; gap: 8px; }}
+        .chip {{
+            border: 1px solid var(--border);
+            background: rgba(79, 209, 197, 0.12);
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: 0.8rem;
+            color: #b6fff9;
+        }}
+        .chip-empty {{ color: var(--text-muted); background: rgba(255, 255, 255, 0.03); }}
+        .table-wrap {{ overflow-x: auto; }}
+        table {{ width: 100%; border-collapse: collapse; min-width: 760px; }}
+        th, td {{
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            text-align: left;
+            font-size: 0.9rem;
+            white-space: nowrap;
+        }}
+        th {{ color: #b6d0ee; font-weight: 600; }}
+        td {{ color: var(--text-main); }}
+        .muted {{ color: var(--text-muted); text-align: center; }}
+        @media (max-width: 720px) {{
+            body {{ padding: 14px; }}
+            .header h1 {{ font-size: 1.4rem; }}
+        }}
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <div>
-                <h1>CyberDeck OS // Detailed Report</h1>
-                <p style="margin: 0.5rem 0 0 0; color: var(--text-muted);">Operation result visualization</p>
-            </div>
-            <div class="meta-info">
-                <p style="margin: 0;">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-                <p style="margin: 0.25rem 0 0 0;">Module: <span class="status">{module_name}</span> | Status: <span class="status">{status}</span></p>
-            </div>
-        </div>
-
-        <div class="card">
-            <h2>Analyzed Telemetry</h2>
-            {parsed_html}
-        </div>
-
-        <div class="card">
-            <h2>Raw JSON Dump</h2>
-            <pre class="raw-dump">{raw_json}</pre>
-        </div>
+        <header class="header">
+            <h1>CyberDeck Executive Dashboard</h1>
+            <p class="meta">
+                Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} |
+                Module: {self._clean_text(module_name)} |
+                Status: {self._clean_text(status).title()}
+            </p>
+        </header>
+        {body_html}
     </div>
 </body>
 </html>
 """
-        
-=======
-        module_name = data.get("module", "Unknown") if isinstance(data, dict) else "Unknown"
 
-        body_html = (
-            self._build_dashboard_html(data)
-            if module_name == "dashboard"
-            else self._build_default_html(data)
-        )
-
-        html_content = f"""
-        <html>
-        <head>
-            <title>CyberDeck Audit Report</title>
-            <style>
-                body {{ font-family: 'Courier New', Courier, monospace; background-color: #0D1117; color: #C9D1D9; padding: 20px; }}
-                h1 {{ color: #00FFFF; border-bottom: 1px solid #30363D; }}
-                pre {{ background-color: #010409; padding: 15px; border: 1px solid #30363D; overflow: auto; }}
-                .status {{ color: #4ADE80; font-weight: bold; }}
-                ul {{ line-height: 1.5; }}
-                table {{ border-collapse: collapse; width: 100%; margin-top: 8px; }}
-                th, td {{ border: 1px solid #30363D; padding: 8px; text-align: left; }}
-                th {{ color: #00FFFF; }}
-            </style>
-        </head>
-        <body>
-            <h1>CyberDeck OS // Audit Report</h1>
-            <p>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-            <p>Module: <span class="status">{module_name}</span></p>
-            <hr>
-            {body_html}
-        </body>
-        </html>
-        """
-
->>>>>>> 4f6b9a2 (Improve dashboard UI: remove raw JSON output and display formatted summary)
         try:
             with open(filepath, "w") as f:
                 f.write(html_content)
@@ -248,7 +255,7 @@ class ReportGenerator:
             return None
 
 
-def generate_report(data):
+def generate_report(data: Dict[str, Any]) -> str:
     """Helper function to quickly generate an HTML report."""
     generator = ReportGenerator()
     return generator.generate_html_report(data)
