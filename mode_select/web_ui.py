@@ -1,0 +1,173 @@
+import os
+import sys
+import json
+from flask import Flask, render_template, jsonify, request, send_from_directory, Response
+
+# Add project root to path
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from core.event_bus import event_bus
+from core.app_state import state
+from core.controller import controller
+from modules import lan_scan, wifi_audit, bluetooth_recon, pentest_tools, anomaly_detect, dashboard, passive_monitor, arp_monitor, tls_audit
+from utils.report_generator import generate_report
+
+app = Flask(__name__, template_folder='../templates', static_folder='../static')
+
+# Maintain an internal state for the API
+api_state = {
+    "logs": [">> System Ready. CyberDeck Command Center Initialized.\n>> Awaiting deployment directive."],
+    "active_module": None,
+    "risk_level": 0,
+    "ops": 0,
+    "entities": 0,
+    "lockdown": False
+}
+
+# Define the runnable modules mapping
+MODULES = {
+    "Passive Monitor": passive_monitor.run,
+    "ARP Monitor": arp_monitor.run,
+    "LAN Scanning": lan_scan.run,
+    "WiFi Audit": wifi_audit.run,
+    "Bluetooth Recon": bluetooth_recon.run,
+    "TLS Audit": tls_audit.run,
+    "Pentest Toolkit": pentest_tools.run,
+    "Anomaly Detection": anomaly_detect.run,
+    "Reports": dashboard.run
+}
+
+def log_to_web(msg: str):
+    """Callback for controller modules to log to the web UI"""
+    api_state["logs"].append(msg)
+    # Keep last 100 logs to prevent memory leak
+    if len(api_state["logs"]) > 100:
+        api_state["logs"] = api_state["logs"][-100:]
+
+# --- Event Bus Subscriptions ---
+def on_module_start(name: str):
+    api_state["active_module"] = name
+
+def on_module_stop(name: str):
+    if api_state["active_module"] == name:
+        api_state["active_module"] = None
+        log_to_web(f">> Finished execution: {name}")
+
+def on_risk_update(score: int):
+    api_state["risk_level"] = score
+
+def on_telemetry_update(telemetry: dict):
+    api_state["ops"] = telemetry.get('total_operations', 0)
+    api_state["entities"] = telemetry.get('entities_tracked', 0)
+
+event_bus.subscribe("MODULE_STARTED", on_module_start)
+event_bus.subscribe("MODULE_STOPPED", on_module_stop)
+event_bus.subscribe("RISK_UPDATED", on_risk_update)
+event_bus.subscribe("HISTORY_UPDATED", on_telemetry_update)
+
+# --- Routes ---
+
+@app.route('/')
+def index():
+    return render_template('index.html', modules=list(MODULES.keys()))
+
+@app.route('/reports')
+def reports():
+    return render_template('reports.html')
+
+@app.route('/api/status')
+def status():
+    # Sync lockdown dynamically from core app state
+    api_state["lockdown"] = state.is_locked_down
+    return jsonify(api_state)
+
+@app.route('/api/run', methods=['POST'])
+def run_module():
+    data = request.json
+    if not data or 'module' not in data:
+        return jsonify({"error": "Module name required"}), 400
+        
+    module_name = data['module']
+    target = data.get('target', '127.0.0.1')
+    
+    if module_name not in MODULES:
+        return jsonify({"error": "Unknown module"}), 404
+        
+    if state.is_locked_down:
+        return jsonify({"error": "System is locked down"}), 403
+
+    func = MODULES[module_name]
+    controller.dispatch_module(module_name, func, callback=log_to_web, target=target)
+    
+    return jsonify({"success": True, "message": f"Started {module_name}"})
+
+@app.route('/api/lockdown', methods=['POST'])
+def toggle_lockdown():
+    new_state = not state.is_locked_down
+    state.set_lockdown(new_state)
+    
+    if new_state:
+        log_to_web(">> EMERGENCY LOCKDOWN ENGAGED. All module dispatch blocked.")
+    else:
+        log_to_web(">> Lockdown disengaged. System ready.")
+        
+    return jsonify({"lockdown": new_state})
+
+@app.route('/api/results/list')
+def list_results():
+    results_dir = os.path.join(PROJECT_ROOT, "results")
+    if not os.path.exists(results_dir):
+        return jsonify([])
+        
+    files = [f for f in os.listdir(results_dir) if f.endswith('.json')]
+    return jsonify(sorted(files, reverse=True))
+
+@app.route('/api/reports/<filename>')
+def get_report(filename):
+    results_dir = os.path.join(PROJECT_ROOT, "results")
+    filepath = os.path.join(results_dir, filename)
+    
+    if not os.path.exists(filepath):
+        return jsonify({"error": "File not found"}), 404
+        
+    try:
+        with open(filepath, 'r') as f:
+            content = json.load(f)
+        
+        target_html = generate_report(content)
+        if target_html and os.path.exists(target_html):
+            with open(target_html, 'r') as h:
+                return Response(h.read(), mimetype='text/html')
+        else:
+            return jsonify({"error": "HTML Generation failed"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/reports/global')
+def get_global_report():
+    # Attempt to locate the most recent global report
+    results_dir = os.path.join(PROJECT_ROOT, "results")
+    if not os.path.exists(results_dir):
+        return jsonify({"error": "No reports found"}), 404
+        
+    # We find the most recent HTML report assuming it might be generated by the dashboard module
+    files = [f for f in os.listdir(results_dir) if f.endswith('.html')]
+    if not files:
+        return jsonify({"error": "No global HTML report found"}), 404
+        
+    latest_html = sorted(files, reverse=True)[0]
+    filepath = os.path.join(results_dir, latest_html)
+    
+    try:
+        with open(filepath, 'r') as h:
+            return Response(h.read(), mimetype='text/html')
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def start_web_ui(port=5000):
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
+if __name__ == "__main__":
+    start_web_ui()

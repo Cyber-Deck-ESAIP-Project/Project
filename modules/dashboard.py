@@ -83,21 +83,64 @@ def run(config, callback=None, **kwargs):
     # Sort files
     result_files = sorted(result_files, reverse=True)
 
-    if callback: callback(f"[+] Found {total_ops} operations and {len(result_files)} result files.")
+    # 3. Load contents of result files to present them beautifully in the HTML report
+    rich_results = []
+    if os.path.exists(results_dir):
+        for filename in result_files:
+            filepath = os.path.join(results_dir, filename)
+            try:
+                with open(filepath, 'r') as f:
+                    content = json.load(f)
+                    
+                    # Try to parse timestamps cleanly
+                    ts_str = content.get("timestamp", "Unknown Date")
+                    if ts_str != "Unknown Date":
+                        try:
+                            # Try parsing typical ISO formats
+                            if '.' in ts_str:
+                                dt = datetime.strptime(ts_str, "%Y-%m-%dT%H:%M:%S.%f")
+                            else:
+                                dt = datetime.strptime(ts_str, "%Y-%m-%dT%H:%M:%S")
+                            clean_ts = dt.strftime("%Y-%m-%d %H:%M:%S")
+                        except:
+                            clean_ts = ts_str
+                    else:
+                        clean_ts = ts_str
+                        
+                    module_name = content.get("module", filename)
+                    
+                    # Extract the important nested data
+                    actionable_data = content.get("data", {})
+                    
+                    rich_results.append({
+                        "Module": module_name.upper(),
+                        "Execution Time": clean_ts,
+                        "Status": content.get("status", "Unknown"),
+                        "Targets Found": content.get("targets", 0),
+                        "Detailed Findings": actionable_data
+                    })
+            except Exception as e:
+                rich_results.append({
+                    "File": filename, 
+                    "Error": f"Could not parse JSON content: {e}"
+                })
 
     summary = {
-        "total_ops": total_ops,
-        "successful_modules": successful_modules,
-        "failed_modules": failed_modules,
-        "entities_found": entities_found,
-        "modules_run": modules_run,
-        "result_files": result_files
+        "Executive Overview": {
+            "Total Operations": total_ops,
+            "Successful Interactions": successful_modules,
+            "Failed Interactions": failed_modules,
+            "Distinct Target Entities": entities_found,
+            "Modules Utilized": ", ".join(modules_run) if modules_run else "None"
+        },
+        "Detailed Module Telemetry": rich_results
     }
 
     # Generate HTML report and notify operator
     result = create_result("dashboard", "success", data=summary)
     html_path = generate_report(result)
     if html_path:
+        result["data"]["html_report"] = html_path
         if callback: callback(f"[+] HTML report saved to: {html_path}")
     else:
         if callback: callback("[!] Warning: HTML report generation failed.")

@@ -2,11 +2,22 @@ import tkinter as tk
 from tkinter import scrolledtext, ttk
 import json
 import os
+import webbrowser
+import subprocess
+import sys
+
+# Add project root to sys.path so we can import utils
+if os.path.abspath(os.path.join(os.path.dirname(__file__), '..')) not in sys.path:
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from utils.report_generator import generate_report # type: ignore
 from typing import Any
 
 class ReportsWindow:
     listbox: Any
     viewer: Any
+    html_path: Any
+    result_files: list[str]
+    btn_html: Any
 
     def __init__(self, parent, report_data):
         self.window = tk.Toplevel(parent)
@@ -35,10 +46,39 @@ class ReportsWindow:
         header.pack_propagate(False)
 
         data = self.report_data.get("data", {})
-        summary_text = f"Total Ops: {data.get('total_ops', 0)}  |  Entities Found: {data.get('entities_found', 0)}  |  Modules: {', '.join(data.get('modules_run', []))}"
+        
+        # Handle the new structured payload from dashboard
+        if "Executive Overview" in data:
+            exec_data = data["Executive Overview"]
+            ops = exec_data.get("Total Operations", 0)
+            entities = exec_data.get("Distinct Target Entities", 0)
+            modules = exec_data.get("Modules Utilized", "")
+            
+            # The files are now embedded in the Detailed Module Telemetry or need to be extracted from the directory
+            self.result_files = []
+            if os.path.exists(self.results_dir):
+                self.result_files = [f for f in os.listdir(self.results_dir) if f.endswith(".json")]
+                self.result_files = sorted(self.result_files, reverse=True)
+        else:
+            # Fallback for old format
+            ops = data.get('total_ops', 0)
+            entities = data.get('entities_found', 0)
+            modules = ', '.join(data.get('modules_run', []))
+            self.result_files = data.get("result_files", [])
+
+        summary_text = f"Total Ops: {ops}  |  Entities Found: {entities}  |  Modules: {modules}"
         
         tk.Label(header, text="EXECUTIVE REPORT SUMMARY", bg=TERMINAL_BG, fg=TEXT_CYAN, font=("Courier", 14, "bold")).pack(pady=(10, 5))
         tk.Label(header, text=summary_text, bg=TERMINAL_BG, fg=TEXT_COLOR, font=("Courier", 10)).pack()
+
+        self.html_path = data.get("html_report")
+        
+        # Always create the Open HTML button, we will disable/enable it based on selection/availability
+        self.btn_html = tk.Button(header, text="[ OPEN HTML ]", bg=TERMINAL_BG, fg=TEXT_GREEN,
+                            activebackground=TEXT_GREEN, activeforeground=TERMINAL_BG,
+                            bd=0, highlightthickness=0, font=("Courier", 10, "bold"),
+                            command=self._open_html_report)
+        self.btn_html.place(relx=0.98, rely=0.5, anchor=tk.E)
 
         # 2. Main Workspace (Paned)
         paned = tk.PanedWindow(self.window, orient=tk.HORIZONTAL, bg=BG_COLOR, bd=0, sashwidth=4)
@@ -54,7 +94,7 @@ class ReportsWindow:
                                  selectbackground=BORDER_COLOR, selectforeground=TEXT_CYAN, bd=0, highlightthickness=0)
         self.listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        for f in data.get("result_files", []):
+        for f in self.result_files:
             self.listbox.insert(tk.END, f)
             
         self.listbox.bind("<<ListboxSelect>>", self._on_file_select)
@@ -93,6 +133,53 @@ class ReportsWindow:
             self.viewer.delete(1.0, tk.END)
             self.viewer.insert(tk.END, f"Error loading file: {e}")
             self.viewer.config(state=tk.DISABLED)
+
+    def _open_html_report(self):
+        target_html = None
+        
+        # 1. Check if a specific JSON file is selected in the listbox
+        selection = self.listbox.curselection()
+        if selection:
+            filename = self.listbox.get(selection[0])
+            filepath = os.path.join(self.results_dir, filename)
+            if os.path.exists(filepath):
+                try:
+                    with open(filepath, 'r') as f:
+                        content = json.load(f)
+                    
+                    # Generate a fresh HTML report for this specific file
+                    target_html = generate_report(content)
+                except Exception as e:
+                    print(f"Failed to generate specific report for {filename}: {e}")
+        
+        # 2. Fallback to the global dashboard HTML report
+        if not target_html and hasattr(self, 'html_path') and self.html_path:
+            target_html = self.html_path
+
+        if target_html and os.path.exists(target_html):
+            abs_path = os.path.abspath(target_html)
+            
+            # Since the app usually runs as sudo, running webbrowser directly might 
+            # fail to launch the user's browser (e.g., Firefox blocks root execution).
+            # We try to drop privileges to the SUDO_USER if available.
+            sudo_user = os.environ.get("SUDO_USER")
+            
+            success = False
+            if sudo_user:
+                try:
+                    # Try using xdg-open as the original user
+                    subprocess.Popen(['sudo', '-u', sudo_user, 'xdg-open', abs_path], 
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    success = True
+                except Exception as e:
+                    print(f"Failed to open browser via sudo -u {sudo_user}: {e}")
+            
+            # Fallback to standard webbrowser module
+            if not success:
+                try:
+                    webbrowser.open(f"file://{abs_path}")
+                except Exception as e:
+                    print(f"Failed to open browser via webbrowser: {e}")
 
 def show_reports(parent, report_data):
     ReportsWindow(parent, report_data)

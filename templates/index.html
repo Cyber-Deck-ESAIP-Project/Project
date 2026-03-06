@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CyberDeck OS v2.0 // Web Command Center</title>
+    <style>
+        :root {
+            --bg-main: #0D1117;
+            --bg-panel: #010409;
+            --border: #30363D;
+            --text-main: #C9D1D9;
+            --accent-cyan: #00FFFF;
+            --accent-green: #4ADE80;
+            --accent-orange: #F59E0B;
+            --accent-red: #FF4444;
+            --font-mono: 'Courier New', Courier, monospace;
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            font-family: var(--font-mono);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .header {
+            background-color: var(--bg-panel);
+            border: 1px solid var(--border);
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            color: var(--accent-cyan);
+            margin: 0;
+            font-size: 1.5rem;
+            text-shadow: 0 0 5px rgba(0, 255, 255, 0.3);
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .sys-status {
+            color: var(--accent-green);
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+
+        .btn {
+            background: var(--bg-panel);
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            padding: 10px 15px;
+            font-family: var(--font-mono);
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            border-color: var(--border) !important;
+            color: var(--text-main) !important;
+        }
+
+        .btn-lockdown {
+            color: var(--accent-orange);
+            border-color: var(--accent-orange);
+        }
+
+        .btn-lockdown:hover,
+        .btn-lockdown.active {
+            background: var(--accent-red);
+            color: var(--bg-panel);
+            border-color: var(--accent-red);
+        }
+
+        .btn-nav {
+            color: var(--accent-cyan);
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .workspace {
+            display: flex;
+            gap: 20px;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .sidebar {
+            width: 250px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            overflow-y: auto;
+        }
+
+        .sidebar h2 {
+            color: var(--accent-cyan);
+            font-size: 1.1rem;
+            margin-top: 0;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 10px;
+        }
+
+        .sidebar .btn {
+            width: 100%;
+            text-align: left;
+        }
+
+        .console-container {
+            flex: 1;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .console-header {
+            padding: 10px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-main);
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .console-output {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            color: var(--accent-green);
+            white-space: pre-wrap;
+            font-size: 0.95rem;
+            line-height: 1.4;
+        }
+
+        .telemetry-pane {
+            width: 300px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .telemetry-pane h2 {
+            color: var(--accent-orange);
+            font-size: 1.1rem;
+            margin-top: 0;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 10px;
+        }
+
+        .stat-box {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px;
+            border: 1px solid var(--border);
+        }
+
+        .footer {
+            margin-top: 20px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .target-input {
+            flex: 1;
+            background: var(--bg-main);
+            color: var(--accent-cyan);
+            border: 1px solid var(--border);
+            padding: 10px;
+            font-family: var(--font-mono);
+            font-size: 1rem;
+        }
+
+        .target-input:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <h1>CYBERDECK OS v2.0</h1>
+        <div class="header-controls">
+            <a href="/reports" class="btn btn-nav">[ EXECUTIVE REPORTS ]</a>
+            <div id="sys-status" class="sys-status">[ SYSTEM IDLE ]</div>
+            <button id="btn-lockdown" class="btn btn-lockdown" onclick="toggleLockdown()">[ EMERGENCY LOCKDOWN
+                ]</button>
+        </div>
+    </div>
+
+    <div class="workspace">
+        <div class="sidebar">
+            <h2>DEPLOY MODULES</h2>
+            {% for module in modules %}
+            <button class="btn module-btn" onclick="runModule('{{ module }}')">[ {{ module | upper }} ]</button>
+            {% endfor %}
+        </div>
+
+        <div class="console-container">
+            <div class="console-header">OPERATIONAL STREAM</div>
+            <div id="console-output" class="console-output"></div>
+        </div>
+
+        <div class="telemetry-pane">
+            <h2>TELEMETRY</h2>
+            <div class="stat-box">
+                <div id="telemetry-ops">Total Ops: 0</div>
+            </div>
+            <div class="stat-box">
+                <div id="telemetry-entities">Entities: 0</div>
+            </div>
+            <div class="stat-box" style="margin-top: 20px; border-color: var(--accent-green);">
+                <div id="telemetry-risk" style="color: var(--accent-green); font-weight: bold; font-size: 1.2rem;">Risk
+                    Level: 0</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <label for="target" style="color: var(--text-main);">TARGET_HOST:</label>
+        <input type="text" id="target" class="target-input" value="127.0.0.1">
+    </div>
+
+    <script>
+        let isLockedDown = false;
+        let activeModule = null;
+
+        async function fetchStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+
+                // Update Console
+                const consoleDiv = document.getElementById('console-output');
+                consoleDiv.textContent = data.logs.join('\n');
+                consoleDiv.scrollTop = consoleDiv.scrollHeight;
+
+                // Update Telemetry
+                document.getElementById('telemetry-ops').textContent = `Total Ops: ${data.ops}`;
+                document.getElementById('telemetry-entities').textContent = `Entities: ${data.entities}`;
+
+                const riskDiv = document.getElementById('telemetry-risk');
+                riskDiv.textContent = `Risk Level: ${data.risk_level}`;
+                if (data.risk_level < 40) riskDiv.style.color = "var(--accent-green)";
+                else if (data.risk_level < 75) riskDiv.style.color = "var(--accent-orange)";
+                else riskDiv.style.color = "var(--accent-red)";
+
+                // Update Lockdown UI
+                isLockedDown = data.lockdown;
+                const lockdownBtn = document.getElementById('btn-lockdown');
+                const statusDiv = document.getElementById('sys-status');
+                const moduleBtns = document.querySelectorAll('.module-btn');
+
+                if (isLockedDown) {
+                    lockdownBtn.textContent = "[ DISENGAGE LOCKDOWN ]";
+                    lockdownBtn.classList.add('active');
+                    statusDiv.textContent = "[ LOCKDOWN ACTIVE ]";
+                    statusDiv.style.color = "var(--accent-red)";
+                    moduleBtns.forEach(btn => btn.disabled = true);
+                } else {
+                    lockdownBtn.textContent = "[ EMERGENCY LOCKDOWN ]";
+                    lockdownBtn.classList.remove('active');
+
+                    if (data.active_module) {
+                        statusDiv.textContent = `[ SCANNING: ${data.active_module.toUpperCase()} ]`;
+                        statusDiv.style.color = "var(--accent-orange)";
+                        moduleBtns.forEach(btn => btn.disabled = true);
+                    } else {
+                        statusDiv.textContent = "[ SYSTEM IDLE ]";
+                        statusDiv.style.color = "var(--accent-green)";
+                        moduleBtns.forEach(btn => btn.disabled = false);
+                    }
+                }
+            } catch (e) {
+                console.error("Status check failed", e);
+            }
+        }
+
+        async function runModule(moduleName) {
+            const target = document.getElementById('target').value || '127.0.0.1';
+            try {
+                const response = await fetch('/api/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ module: moduleName, target: target })
+                });
+                const result = await response.json();
+                if (result.error) alert(result.error);
+                fetchStatus(); // immediate refresh
+            } catch (e) {
+                alert("Failed to start module");
+            }
+        }
+
+        async function toggleLockdown() {
+            try {
+                await fetch('/api/lockdown', { method: 'POST' });
+                fetchStatus();
+            } catch (e) {
+                alert("Failed to toggle lockdown");
+            }
+        }
+
+        // Poll every 1 second
+        setInterval(fetchStatus, 1000);
+        fetchStatus();
+    </script>
+</body>
+
+</html>
