@@ -13,7 +13,7 @@ if PROJECT_ROOT not in sys.path:
 from core.event_bus import event_bus
 from core.app_state import state
 from modules import lan_scan, wifi_audit, bluetooth_recon, pentest_tools, anomaly_detect, dashboard, passive_monitor, arp_monitor, tls_audit
-from mode_select.reports_window import show_reports
+
 
 # Theme Constants
 BG_COLOR = "#0D1117"

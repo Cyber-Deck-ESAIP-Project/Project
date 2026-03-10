@@ -82,7 +82,7 @@ class SystemController:
                 
                 # 2. Update Global App State
                 state.update_telemetry(module_name, history_record["targets"])
-                if module_name in ["LAN Scan", "WiFi Audit", "BT Recon"]:
+                if module_name in ["LAN Scanning", "WiFi Audit", "Bluetooth Recon"]:
                     state.set_last_scan_data(history_record)
                 
                 # 3. Publish completion object for UI subscribers

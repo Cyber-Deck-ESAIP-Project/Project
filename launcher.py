@@ -32,25 +32,19 @@ def main():
         import threading
         import time
         import webbrowser
-        
-        logger.info("Auto-launching CyberDeck Web Dashboard on http://127.0.0.1:5000 ...")
-        
+
+        port = config.get("dashboard", {}).get("port", 5000)
+        logger.info(f"Auto-launching CyberDeck Web Dashboard on http://127.0.0.1:{port} ...")
+
         # Give the server a moment to start before opening browser
         def open_browser():
             time.sleep(1.5)
-            # Find the actual user if running via sudo
-            sudo_user = os.environ.get("SUDO_USER")
-            if sudo_user:
-                import subprocess
-                subprocess.Popen(['sudo', '-u', sudo_user, 'xdg-open', 'http://127.0.0.1:5000'], 
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            else:
-                webbrowser.open("http://127.0.0.1:5000")
-                
+            webbrowser.open(f"http://127.0.0.1:{port}")
+
         threading.Thread(target=open_browser, daemon=True).start()
-        
+
         # Starts the blocking Flask webserver
-        start_web_ui()
+        start_web_ui(port=port)
 
     except Exception as e:
         logger.critical(f"Critical error during startup: {e}")

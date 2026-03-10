@@ -52,8 +52,9 @@ source .venv/bin/activate
 sudo python3 launcher.py
 ```
 2. Run one or more security modules from the main interface.
-3. Open the reports dashboard in a browser:
-   `http://127.0.0.1:5000/reports`
+3. The browser opens automatically. To go directly to reports:
+   `http://127.0.0.1:5050/reports`
+   *(Port is set by `config["dashboard"]["port"]`, default 5050)*
 4. In the reports page:
 - Use the global report view to see the Executive Dashboard.
 - Open individual result reports from the available result file list.

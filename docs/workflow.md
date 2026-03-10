@@ -85,19 +85,24 @@ In `config/config.json` and `config/config.example.json`, add under `"modules"`:
 }
 ```
 
-### Step 3 — Wire into the GUI sidebar
+### Step 3 — Wire into the web dashboard
 
-In `mode_select/main_window.py`:
+In `mode_select/web_ui.py`:
 
 1. Add the import at the top:
 ```python
 from modules import ..., my_module
 ```
 
-2. Add an entry to the `modules` list inside `_setup_layout()`:
+2. Add an entry to the `MODULES` dict:
 ```python
-("My Module", my_module.run),
+MODULES = {
+    ...
+    "My Module": my_module.run,
+}
 ```
+
+The dict key is the display name shown in the browser dashboard and stored in history records.
 
 ### Step 4 — (Optional) Handle entity count in controller
 
@@ -116,7 +121,7 @@ If your module produces data that should trigger anomaly rules, add a rule in `m
 - [ ] Checks `mod_config.get("enabled", False)` and returns early if False
 - [ ] Module name string matches the JSON key in `config.json`
 - [ ] Entry added to both `config/config.json` and `config/config.example.json`
-- [ ] Import and sidebar entry added to `mode_select/main_window.py`
+- [ ] Import and entry added to `MODULES` dict in `mode_select/web_ui.py`
 
 ---
 

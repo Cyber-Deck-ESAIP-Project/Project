@@ -36,8 +36,8 @@ CyberDeck-ESAIP/
 │   └── scheduler.py          # Background autonomous sweep daemon
 │
 ├── mode_select/              # View layer
-│   ├── main_window.py        # Primary Tkinter GUI
-│   └── reports_window.py     # Scan results viewer (Toplevel window)
+│   ├── web_ui.py             # Primary Flask web UI (active)
+│   └── main_window.py        # Legacy Tkinter GUI (retained, not invoked)
 │
 ├── modules/                  # Scan modules (implement the run() contract)
 │   ├── arp_monitor.py
@@ -75,7 +75,7 @@ CyberDeck-ESAIP/
 
 ## Boot Sequence
 
-### Primary path: `launcher.py` → GUI
+### Primary path: `launcher.py` → Flask Web UI
 
 ```
 launcher.py
@@ -84,10 +84,13 @@ launcher.py
   │      (allows sudo python3 launcher.py to find pip-installed packages)
   │
   ├── 2. load_config("config/config.json")
-  │      Validates the config file is readable before the UI starts.
+  │      Reads config["dashboard"]["port"] for the Flask port.
   │      Aborts with a clear error if the file is missing or malformed.
   │
-  └── 3. start_ui()  ──▶  MainWindow(root)  ──▶  root.mainloop()
+  ├── 3. Spawns a daemon thread that waits 1.5 s then calls webbrowser.open()
+  │      Cross-platform browser launch (works on Linux, macOS, Windows).
+  │
+  └── 4. start_web_ui(port=port)  ──▶  Flask app.run()  (blocking)
 ```
 
 ### Legacy path: `menu.py` → CLI
@@ -108,25 +111,26 @@ menu.py
 
 ### 1. View Layer — `mode_select/`
 
-**`main_window.py` (`MainWindow`)**
+**`web_ui.py` (Flask application)**
 
-Builds the full Tkinter GUI in a single class:
+The primary UI. Serves the web dashboard at `http://0.0.0.0:<port>` (port from `config["dashboard"]["port"]`).
 
-| GUI Region | Contents |
-|---|---|
-| Header bar | Title label, `[ EMERGENCY LOCKDOWN ]` toggle button, status label |
-| Left sidebar | One button per module — dispatches via `_execute_module()` |
-| Central console | `ScrolledText` — receives all `callback("text")` output |
-| Right telemetry pane | Total Ops counter, Entities counter, Risk Score (colour-coded) |
-| Footer | `TARGET_HOST` entry field — value passed as `target` kwarg to modules |
+| Route | Method | Description |
+|---|---|---|
+| `/` | GET | Main dashboard (module buttons, live console, telemetry) |
+| `/reports` | GET | Builds and renders the global executive report |
+| `/reports/global` | GET | Returns the generated global HTML report |
+| `/report/<filename>` | GET | Generates and returns an HTML report for a specific result JSON |
+| `/api/status` | GET | Returns live `api_state` JSON (ops, entities, risk, active module, lockdown) |
+| `/api/run` | POST | Dispatches a module via the controller. Body: `{"module": "<name>", "target": "<ip>"}` |
+| `/api/lockdown` | POST | Toggles emergency lockdown on/off |
+| `/api/results/list` | GET | Returns a sorted list of result JSON filenames |
 
-Subscribes to 5 EventBus events: `MODULE_STARTED`, `MODULE_STOPPED`, `RISK_UPDATED`, `HISTORY_UPDATED`, `SCAN_COMPLETED`.
+Subscribes to 4 EventBus events: `MODULE_STARTED`, `MODULE_STOPPED`, `RISK_UPDATED`, `HISTORY_UPDATED`.
 
-All UI mutations from background threads use `root.after(0, fn)` — the only thread-safe way to update Tkinter from outside the main thread.
+All module dispatch goes through `controller.dispatch_module()`, maintaining the same thread-safety and history archival as the original Tkinter path.
 
-**`reports_window.py` (`ReportsWindow`)**
-
-A `Toplevel` window opened automatically when the Reports module completes (triggered by `SCAN_COMPLETED`). Shows an aggregated summary header, a left listbox of all JSON result files, and a right viewer pane for raw JSON content.
+**`main_window.py`** — retained in the repository but not invoked by `launcher.py`. Can be used as a reference or restored as an alternative UI entry point.
 
 ---
 
@@ -318,10 +322,8 @@ module.run() returns create_result(...)
           └── Published as SCAN_COMPLETED payload
                 │
                 ├── RiskEngine recalculates score
-                ├── MainWindow updates console / telemetry
-                └── If module == "Reports":
-                      MainWindow opens ReportsWindow Toplevel
-                      report_generator.py saves results/report_<ts>.html
+                └── web_ui.py EventBus callbacks update api_state
+                      (ops, entities, risk, active_module — served by /api/status)
 ```
 
 ---
@@ -329,26 +331,24 @@ module.run() returns create_result(...)
 ## Emergency Lockdown Flow
 
 ```
-User clicks [ EMERGENCY LOCKDOWN ]
+User clicks [ EMERGENCY LOCKDOWN ] in the web dashboard
   │
-  └── MainWindow._toggle_lockdown()
+  └── Browser POSTs to /api/lockdown
         │
-        ├── state.set_lockdown(True)
-        │     └── AppState sets is_locked_down = True
-        │
-        ├── lbl_status → "[ LOCKDOWN ACTIVE ]" (red)
-        ├── btn_lockdown → "[ DISENGAGE LOCKDOWN ]" (red)
-        └── All sidebar buttons → tk.DISABLED
+        └── web_ui.py: state.set_lockdown(True)
+              └── AppState sets is_locked_down = True
+
+Any subsequent POST to /api/run:
+  └── web_ui.py checks state.is_locked_down → True → returns 403
 
 Any subsequent dispatch_module() call:
   └── Controller checks state.is_locked_down → True → aborts immediately
 
-Scheduler loop:
-  └── Checks state.is_locked_down → True → sleeps, skips dispatch
+/api/status response:
+  └── Returns {"lockdown": true} → browser UI shows LOCKDOWN ACTIVE
 
 User clicks [ DISENGAGE LOCKDOWN ]
-  └── state.set_lockdown(False)
-      All buttons re-enabled, status returns to "[ SYSTEM IDLE ]"
+  └── Browser POSTs to /api/lockdown → state.set_lockdown(False)
 ```
 
 ---
