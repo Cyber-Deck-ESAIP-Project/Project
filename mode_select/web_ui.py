@@ -123,12 +123,30 @@ def list_results():
     results_dir = os.path.join(PROJECT_ROOT, "results")
     if not os.path.exists(results_dir):
         return jsonify([])
-        
+
     files = [
         f for f in os.listdir(results_dir)
         if f.endswith('.json') and f != 'baseline.json'
     ]
     return jsonify(sorted(files, reverse=True))
+
+@app.route('/api/html-reports/list')
+def list_html_reports():
+    results_dir = os.path.join(PROJECT_ROOT, "results")
+    if not os.path.exists(results_dir):
+        return jsonify([])
+    files = [f for f in os.listdir(results_dir) if f.endswith('.html')]
+    return jsonify(sorted(files, reverse=True))
+
+@app.route('/results/html/<filename>')
+def serve_html_report(filename):
+    results_dir = os.path.join(PROJECT_ROOT, "results")
+    safe_filename = os.path.basename(filename)
+    filepath = os.path.join(results_dir, safe_filename)
+    if not os.path.exists(filepath):
+        return jsonify({"error": "File not found"}), 404
+    with open(filepath, 'r') as f:
+        return Response(f.read(), mimetype='text/html')
 
 def _generate_html_from_json_report(filename: str) -> Response:
     results_dir = os.path.join(PROJECT_ROOT, "results")
@@ -155,12 +173,21 @@ def _generate_global_dashboard_html() -> Response:
     # Always rebuild dashboard summary from current scan results.
     try:
         report_result = dashboard.run({"system": {"results_dir": "results"}})
-        html_path = report_result.get("data", {}).get("html_report")
+
+        # Enrich with anomaly analysis
+        try:
+            anomaly_result = anomaly_detect.run(controller.config)
+            if anomaly_result.get("status") in ("success", "partial"):
+                report_result["data"]["anomaly_analysis"] = anomaly_result.get("data", {})
+        except Exception:
+            pass  # anomaly analysis is best-effort
+
+        # Regenerate HTML with anomaly data merged in
+        html_path = generate_report(report_result)
         if not html_path or not os.path.exists(html_path):
             return jsonify({"error": "Global dashboard generation failed"}), 500
 
-        filepath = html_path
-        with open(filepath, 'r') as h:
+        with open(html_path, 'r') as h:
             return Response(h.read(), mimetype='text/html')
     except Exception as e:
         return jsonify({"error": str(e)}), 500

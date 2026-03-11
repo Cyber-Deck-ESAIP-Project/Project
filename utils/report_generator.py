@@ -111,12 +111,62 @@ class ReportGenerator:
         </section>
         """
 
+    def _build_anomaly_html(self, anomaly: Dict[str, Any]) -> str:
+        if not isinstance(anomaly, dict) or not anomaly:
+            return ""
+
+        flags = anomaly.get("anomaly_flags", [])
+        ops = self._safe_int(anomaly.get("operations_analyzed", 0))
+        narrative = self._clean_text(anomaly.get("risk_assessment", ""))
+
+        severity_color = {"CRITICAL": "#f87171", "HIGH": "#fb923c", "MEDIUM": "#fbbf24", "LOW": "#34d399"}
+
+        flag_rows = []
+        for f in flags if isinstance(flags, list) else []:
+            if not isinstance(f, dict):
+                continue
+            sev = str(f.get("severity", "")).upper()
+            color = severity_color.get(sev, "#97a8be")
+            flag_rows.append(
+                "<tr>"
+                f"<td style='color:{color};font-weight:bold'>{self._clean_text(sev)}</td>"
+                f"<td>{self._clean_text(f.get('rule', '-'))}</td>"
+                f"<td>{self._clean_text(f.get('detail', '-'))}</td>"
+                "</tr>"
+            )
+        flag_table = "".join(flag_rows) or (
+            "<tr><td colspan='3' class='muted'>No anomalies detected in recent telemetry.</td></tr>"
+        )
+
+        narrative_html = (
+            f"<div style='margin-top:12px;padding:12px;border:1px solid var(--border);"
+            f"border-radius:8px;color:var(--text-muted);font-size:0.9rem;line-height:1.6'>"
+            f"{narrative}</div>"
+            if narrative and narrative not in ("-", "AI analysis unavailable.")
+            else ""
+        )
+
+        return f"""
+        <section class="card">
+            <h2>Anomaly Analysis</h2>
+            <p class="meta-row">Operations analysed: <strong>{ops}</strong></p>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Severity</th><th>Rule</th><th>Detail</th></tr></thead>
+                    <tbody>{flag_table}</tbody>
+                </table>
+            </div>
+            {narrative_html}
+        </section>
+        """
+
     def _build_dashboard_html(self, data: Dict[str, Any]) -> str:
         payload = data.get("data", {}) if isinstance(data, dict) else {}
         modules = payload.get("modules_run", [])
         breakdown = payload.get("module_breakdown", {})
         scan_results = payload.get("scan_results", [])
         baseline_comparison = payload.get("Baseline Comparison", {})
+        anomaly_analysis = payload.get("anomaly_analysis", {})
 
         modules_html = "".join(f"<span class='chip'>{self._clean_text(module)}</span>" for module in modules)
         if not modules_html:
@@ -158,6 +208,7 @@ class ReportGenerator:
         )
 
         baseline_html = self._build_baseline_comparison_html(baseline_comparison)
+        anomaly_html = self._build_anomaly_html(anomaly_analysis)
 
         return f"""
         <section class="card">
@@ -184,6 +235,8 @@ class ReportGenerator:
         </section>
 
         {baseline_html}
+
+        {anomaly_html}
 
         <section class="card">
             <h2>Scan Results</h2>

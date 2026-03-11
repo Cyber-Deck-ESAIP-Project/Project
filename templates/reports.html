@@ -90,6 +90,15 @@
             padding-bottom: 10px;
         }
 
+        .sidebar h3 {
+            color: var(--accent-orange);
+            font-size: 0.95rem;
+            margin: 14px 0 6px 0;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 6px;
+        }
+
         .file-list {
             list-style: none;
             padding: 0;
@@ -153,6 +162,10 @@
             <ul class="file-list" id="fileList">
                 <li>Loading files...</li>
             </ul>
+            <h3>GENERATED REPORTS</h3>
+            <ul class="file-list" id="htmlReportList">
+                <li>Loading reports...</li>
+            </ul>
         </div>
 
         <div class="report-container">
@@ -206,13 +219,49 @@
             frame.src = `/report/${encodeURIComponent(filename)}`;
         }
 
+        async function fetchHtmlReports() {
+            try {
+                const response = await fetch('/api/html-reports/list');
+                const files = await response.json();
+                const listEl = document.getElementById('htmlReportList');
+                listEl.innerHTML = '';
+                if (files.length === 0) {
+                    listEl.innerHTML = '<li>No reports generated yet.</li>';
+                    return;
+                }
+                files.forEach(file => {
+                    const li = document.createElement('li');
+                    li.className = 'file-item';
+                    li.textContent = file;
+                    li.onclick = () => loadHtmlReport(file, li);
+                    listEl.appendChild(li);
+                });
+            } catch (e) {
+                console.error("Failed to fetch HTML reports", e);
+            }
+        }
+
+        function loadHtmlReport(filename, listItem) {
+            document.querySelectorAll('.file-item').forEach(el => el.classList.remove('active'));
+            if (listItem) listItem.classList.add('active');
+            const frame = document.getElementById('reportFrame');
+            const loader = document.getElementById('loader');
+            frame.style.display = 'none';
+            loader.style.display = 'block';
+            frame.onload = function () {
+                loader.style.display = 'none';
+                frame.style.display = 'block';
+            };
+            frame.src = `/results/html/${encodeURIComponent(filename)}`;
+        }
+
         function loadGlobalReport() {
-            // Hard reset the reports view and clear selected report state.
             window.location.href = '/reports';
         }
 
         // Init
         fetchFiles();
+        fetchHtmlReports();
         (function initGlobalDashboard() {
             const frame = document.getElementById('reportFrame');
             const loader = document.getElementById('loader');
