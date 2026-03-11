@@ -128,7 +128,8 @@ def list_results():
         f for f in os.listdir(results_dir)
         if f.endswith('.json') and f != 'baseline.json'
     ]
-    return jsonify(sorted(files, reverse=True))
+    files.sort(key=lambda f: os.path.getmtime(os.path.join(results_dir, f)), reverse=True)
+    return jsonify(files)
 
 @app.route('/api/html-reports/list')
 def list_html_reports():
@@ -136,7 +137,8 @@ def list_html_reports():
     if not os.path.exists(results_dir):
         return jsonify([])
     files = [f for f in os.listdir(results_dir) if f.endswith('.html')]
-    return jsonify(sorted(files, reverse=True))
+    files.sort(key=lambda f: os.path.getmtime(os.path.join(results_dir, f)), reverse=True)
+    return jsonify(files)
 
 @app.route('/results/html/<filename>')
 def serve_html_report(filename):
