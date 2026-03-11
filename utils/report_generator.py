@@ -82,7 +82,7 @@ class ReportGenerator:
                 f"<td><code>{self._clean_text(ap.get('bssid', '-'))}</code></td>"
                 f"<td>{self._clean_text(ap.get('rssi', '-'))}</td>"
                 f"<td>{self._clean_text(ap.get('crypto', '-'))}</td>"
-                f"<td style='color:{\"#f87171\" if flags else \"#34d399\"}'>{self._clean_text(flags_str)}</td>"
+                "<td style='color:" + ("#f87171" if flags else "#34d399") + f"'>{self._clean_text(flags_str)}</td>"
                 "</tr>"
             )
         table = "".join(rows) or "<tr><td colspan='5' class='muted'>No networks found.</td></tr>"
@@ -333,16 +333,22 @@ class ReportGenerator:
 
         rank_color = {"excellent": "#34d399", "great": "#4fd1c5", "normal": "#fbbf24", "low": "#f87171"}
 
-        rows = "".join(
-            f"<tr>"
-            f"<td>{self._clean_text(m.get('port','-'))}</td>"
-            f"<td>{self._clean_text(m.get('service','-'))}</td>"
-            f"<td><code style='font-size:0.82rem'>{self._clean_text(m.get('module','-'))}</code></td>"
-            f"<td style='color:{rank_color.get(str(m.get(\"rank\",\"\")).lower(),\"#97a8be\")}'>{self._clean_text(m.get('rank','-')).title()}</td>"
-            f"<td>{self._clean_text(m.get('description','-'))}</td>"
-            "</tr>"
-            for m in (matches if isinstance(matches, list) else []) if isinstance(m, dict)
-        ) or "<tr><td colspan='5' class='muted'>No exploit matches found for this target.</td></tr>"
+        match_rows = []
+        for m in (matches if isinstance(matches, list) else []):
+            if not isinstance(m, dict):
+                continue
+            r = str(m.get("rank", "")).lower()
+            rc = rank_color.get(r, "#97a8be")
+            match_rows.append(
+                f"<tr>"
+                f"<td>{self._clean_text(m.get('port','-'))}</td>"
+                f"<td>{self._clean_text(m.get('service','-'))}</td>"
+                f"<td><code style='font-size:0.82rem'>{self._clean_text(m.get('module','-'))}</code></td>"
+                f"<td style='color:{rc}'>{self._clean_text(m.get('rank','-')).title()}</td>"
+                f"<td>{self._clean_text(m.get('description','-'))}</td>"
+                "</tr>"
+            )
+        rows = "".join(match_rows) or "<tr><td colspan='5' class='muted'>No exploit matches found for this target.</td></tr>"
 
         return self._header_card(data) + f"""
         <section class="card">
