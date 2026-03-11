@@ -633,6 +633,18 @@ class ReportGenerator:
 
     def _build_default_html(self, data: Dict[str, Any]) -> str:
         module = (data.get("module") or "").lower()
+        # Normalize display names (from old compact summary files) to module keys
+        display_name_map = {
+            "wifi audit":       "wifi_audit",
+            "lan scanning":     "lan_scan",
+            "bluetooth recon":  "bluetooth_recon",
+            "pentest toolkit":  "pentest_tools",
+            "anomaly detection":"anomaly_detect",
+            "passive monitor":  "passive_monitor",
+            "arp monitor":      "arp_monitor",
+            "tls audit":        "tls_audit",
+        }
+        module = display_name_map.get(module, module)
         dispatch = {
             "wifi_audit":       self._build_wifi_html,
             "lan_scan":         self._build_lan_html,

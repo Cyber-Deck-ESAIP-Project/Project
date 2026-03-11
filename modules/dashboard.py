@@ -369,9 +369,8 @@ def run(config, callback=None, **kwargs):
                     filepath = os.path.join(results_dir, filename)
 
                     if not os.path.exists(filepath):
-                        summary_record = _make_result_summary(module, targets, raw_data)
                         with open(filepath, "w") as out_f:
-                            json.dump(summary_record, out_f, indent=4)
+                            json.dump(raw_data, out_f, indent=4)
 
                     if filename not in result_files:
                         result_files.append(filename)
