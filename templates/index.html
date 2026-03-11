@@ -311,6 +311,10 @@
         }
 
         async function runModule(moduleName) {
+            if (moduleName === 'Reports') {
+                window.location.href = '/reports';
+                return;
+            }
             const target = document.getElementById('target').value || '127.0.0.1';
             try {
                 const response = await fetch('/api/run', {
