@@ -259,22 +259,53 @@ class ReportGenerator:
         """
 
     def _build_default_html(self, data: Dict[str, Any]) -> str:
+        # Support both create_result() format (nested "data" key)
+        # and compact summary format (flat keys at top level).
         payload = data.get("data", {}) if isinstance(data, dict) else {}
+
+        def _get(key, default=None):
+            v = data.get(key)
+            return v if v is not None else payload.get(key, default)
+
+        timestamp   = self._clean_text(_get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+        targets      = self._safe_int(_get('targets', 0))
+        error_count  = self._safe_int(_get('error_count', 0))
+        entities     = self._safe_int(_get('entities_found', targets))
+
+        # Data summary block (present in compact summary files)
+        ds = data.get('data_summary') or payload.get('data_summary') or {}
+        summary_html = ""
+        if isinstance(ds, dict) and ds:
+            summary_html = f"""
+            <div class="metric-grid" style="margin-top:12px">
+                <div class="metric"><span class="label">Fields</span><span class="value">{self._safe_int(ds.get('fields',0))}</span></div>
+                <div class="metric"><span class="label">List Items</span><span class="value">{self._safe_int(ds.get('list_items',0))}</span></div>
+                <div class="metric"><span class="label">Nested Objects</span><span class="value">{self._safe_int(ds.get('nested_objects',0))}</span></div>
+                <div class="metric"><span class="label">Scalar Fields</span><span class="value">{self._safe_int(ds.get('scalar_fields',0))}</span></div>
+            </div>"""
+
+        errors = data.get('errors') or payload.get('errors') or []
+        errors_html = ""
+        if isinstance(errors, list) and errors:
+            rows = "".join(f"<tr><td>{self._clean_text(e)}</td></tr>" for e in errors)
+            errors_html = f"""
+            <div class="table-wrap" style="margin-top:12px">
+                <h3>Errors</h3>
+                <table><tbody>{rows}</tbody></table>
+            </div>"""
+
         return f"""
         <section class="card">
             <h2>Operation Summary</h2>
-            <div class="table-wrap">
-                <table>
-                    <tbody>
-                        <tr><th>Module</th><td>{self._clean_text(data.get('module', 'Unknown'))}</td></tr>
-                        <tr><th>Status</th><td>{self._clean_text(data.get('status', 'Unknown')).title()}</td></tr>
-                        <tr><th>Timestamp</th><td>{self._clean_text(payload.get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S')))}</td></tr>
-                        <tr><th>Targets Found</th><td>{self._safe_int(payload.get('targets', 0))}</td></tr>
-                        <tr><th>Error Count</th><td>{self._safe_int(payload.get('error_count', 0))}</td></tr>
-                        <tr><th>Entities Found</th><td>{self._safe_int(payload.get('entities_found', payload.get('targets', 0)))}</td></tr>
-                    </tbody>
-                </table>
+            <div class="metric-grid">
+                <div class="metric"><span class="label">Module</span><span class="value" style="font-size:1rem">{self._clean_text(data.get('module','Unknown'))}</span></div>
+                <div class="metric"><span class="label">Status</span><span class="value" style="font-size:1rem">{self._clean_text(data.get('status','Unknown')).title()}</span></div>
+                <div class="metric"><span class="label">Targets Found</span><span class="value">{targets}</span></div>
+                <div class="metric"><span class="label">Entities Found</span><span class="value">{entities}</span></div>
             </div>
+            <p class="meta-row">Timestamp: {timestamp} | Errors: {error_count}</p>
+            {summary_html}
+            {errors_html}
         </section>
         """
 

@@ -151,20 +151,20 @@
     <div class="header">
         <h1>EXECUTIVE REPORT SUMMARY</h1>
         <div>
-            <a href="/reports" class="btn">[ GLOBAL DASHBOARD REPORT ]</a>
-            <a href="/" class="btn" style="margin-left: 10px;">[ REturn to TERMINAL ]</a>
+            <button onclick="generateNewReport()" class="btn">[ GENERATE NEW REPORT ]</button>
+            <a href="/" class="btn" style="margin-left: 10px;">[ RETURN TO TERMINAL ]</a>
         </div>
     </div>
 
     <div class="workspace">
         <div class="sidebar">
-            <h2>RESULT FILES</h2>
-            <ul class="file-list" id="fileList">
-                <li>Loading files...</li>
-            </ul>
-            <h3>GENERATED REPORTS</h3>
+            <h2>PAST REPORTS</h2>
             <ul class="file-list" id="htmlReportList">
                 <li>Loading reports...</li>
+            </ul>
+            <h3>SCAN RESULTS</h3>
+            <ul class="file-list" id="fileList">
+                <li>Loading files...</li>
             </ul>
         </div>
 
@@ -255,8 +255,18 @@
             frame.src = `/results/html/${encodeURIComponent(filename)}`;
         }
 
-        function loadGlobalReport() {
-            window.location.href = '/reports';
+        function generateNewReport() {
+            document.querySelectorAll('.file-item').forEach(el => el.classList.remove('active'));
+            const frame = document.getElementById('reportFrame');
+            const loader = document.getElementById('loader');
+            frame.style.display = 'none';
+            loader.style.display = 'block';
+            frame.onload = function () {
+                loader.style.display = 'none';
+                frame.style.display = 'block';
+                fetchHtmlReports(); // refresh list so the new report appears
+            };
+            frame.src = '/reports/global?t=' + Date.now();
         }
 
         // Init
