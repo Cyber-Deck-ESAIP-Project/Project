@@ -8,12 +8,12 @@
     "modules": {
         "lan_scan": {
             "enabled": true,
-            "interface": "enp2s0",
+            "interface": "wlan0",
             "timeout": 30
         },
         "wifi_audit": {
             "enabled": true,
-            "interface": "wlo1"
+            "interface": "wlan0"
         },
         "bluetooth_recon": {
             "enabled": true,
@@ -22,12 +22,12 @@
         },
         "passive_monitor": {
             "enabled": true,
-            "interface": "enp2s0",
+            "interface": "wlan0",
             "duration": 60
         },
         "arp_monitor": {
             "enabled": true,
-            "interface": "enp2s0",
+            "interface": "wlan0",
             "duration": 120
         },
         "tls_audit": {
