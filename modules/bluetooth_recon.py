@@ -204,13 +204,19 @@ def run(config, callback=None, **kwargs):
         _emit(callback, f"[!] {error_msg}")
         return create_result(module_name, "error", errors=[error_msg])
 
-    # 8) Parse results — collect MACs from both scan events and devices list
+    # 8) Parse results from scan output
+    # Bluetoothctl emits these event lines during a session:
+    #   [NEW] Device AA:BB:CC Name      — device first seen
+    #   [CHG] Device AA:BB:CC Name: X  — name resolved
+    #   [CHG] Device AA:BB:CC RSSI: -67 — signal strength update
+    #   Device AA:BB:CC Name            — from "devices" command
 
-    seen_macs = {}
+    seen_macs = {}   # mac -> {"name": str, "rssi": str}
+
     for line in bt_output.splitlines():
         line = line.strip()
-        # "[NEW] Device AA:BB:CC:DD:EE:FF Name" — live discovery during scan
-        # "Device AA:BB:CC:DD:EE:FF Name"        — from devices command
+
+        # New device discovered
         for prefix in ("[NEW] Device ", "Device "):
             if prefix in line:
                 after = line[line.index(prefix) + len(prefix):]
@@ -218,12 +224,37 @@ def run(config, callback=None, **kwargs):
                 if len(parts) == 2:
                     mac, name = parts[0].strip(), parts[1].strip()
                     if mac not in seen_macs:
-                        seen_macs[mac] = name
+                        seen_macs[mac] = {"name": name, "rssi": "N/A"}
                 break
 
+        # Name resolved for existing device
+        if "[CHG] Device " in line and " Name: " in line:
+            after = line[line.index("[CHG] Device ") + len("[CHG] Device "):]
+            parts = after.split(" ", 1)
+            if len(parts) == 2:
+                mac = parts[0].strip()
+                name = parts[1].replace("Name: ", "", 1).strip()
+                if mac in seen_macs and name and name != mac:
+                    seen_macs[mac]["name"] = name
+
+        # RSSI update for existing device
+        if "[CHG] Device " in line and " RSSI: " in line:
+            after = line[line.index("[CHG] Device ") + len("[CHG] Device "):]
+            parts = after.split(" ", 1)
+            if len(parts) == 2:
+                mac = parts[0].strip()
+                rssi_val = parts[1].replace("RSSI: ", "", 1).strip()
+                if mac in seen_macs:
+                    seen_macs[mac]["rssi"] = rssi_val
+
     scan_results = []
-    for mac, name in seen_macs.items():
-        rssi, device_class = _get_device_info(mac)
+    for mac, info in seen_macs.items():
+        name = info["name"]
+        rssi = info["rssi"]
+        # If name is still just the MAC (no friendly name broadcast), label it unknown
+        if name.replace("-", ":").upper() == mac.upper():
+            name = "Unknown Device"
+        _, device_class = _get_device_info(mac)
         entry = {
             "mac": mac,
             "name": name,
