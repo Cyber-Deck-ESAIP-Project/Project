@@ -183,15 +183,18 @@ def run(config, callback=None, **kwargs):
 
         time.sleep(wait_time)
 
+        # Wait extra 10s for name resolution packets to come back
+        time.sleep(10)
+
         proc.stdin.write("devices\n")
         proc.stdin.flush()
-        time.sleep(0.5)
+        time.sleep(1)
 
         proc.stdin.write("scan off\n")
         proc.stdin.write("quit\n")
         proc.stdin.flush()
 
-        bt_output, _ = proc.communicate(timeout=wait_time + 15)
+        bt_output, _ = proc.communicate(timeout=wait_time + 25)
     except subprocess.TimeoutExpired:
         proc.kill()
         error_msg = "bluetoothctl session timed out during scan."
