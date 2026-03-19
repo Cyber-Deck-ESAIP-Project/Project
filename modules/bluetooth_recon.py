@@ -33,6 +33,26 @@ def _run_cmd(cmd, timeout=5):
 def _path_exists(path):
     return os.path.exists(path)
 
+def _get_device_info(mac, timeout=5):
+    """Query bluetoothctl info for RSSI and device class/icon."""
+    try:
+        result = _run_cmd(["bluetoothctl", "info", mac], timeout=timeout)
+        if result.returncode != 0:
+            return "N/A", "Unknown"
+        rssi = "N/A"
+        device_class = "Unknown"
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if line.startswith("RSSI:"):
+                rssi = line.split(":", 1)[1].strip()
+            elif line.startswith("Icon:"):
+                device_class = line.split(":", 1)[1].strip().replace("-", " ").title()
+            elif line.startswith("Class:") and device_class == "Unknown":
+                device_class = line.split(":", 1)[1].strip()
+        return rssi, device_class
+    except Exception:
+        return "N/A", "Unknown"
+
 def run(config, callback=None, **kwargs):
     module_name = "bluetooth_recon"
     logger.info(f"Running {module_name} module...")
@@ -165,8 +185,8 @@ def run(config, callback=None, **kwargs):
         logger.warning(f"Error while starting scan: {e}")
         _emit(callback, f"[!] Warning: Error while starting scan: {e}")
 
-    # Allow some discovery time
-    wait_time = max(3, min(scan_duration, 10))
+    # Allow some discovery time (respect config timeout, minimum 3s)
+    wait_time = max(3, scan_duration)
     _emit(callback, f"[*] Scanning for nearby Bluetooth devices for {wait_time}s...")
     time.sleep(wait_time)
 
@@ -217,15 +237,15 @@ def run(config, callback=None, **kwargs):
             if len(parts) >= 3:
                 mac = parts[1].strip()
                 name = parts[2].strip()
-
+                rssi, device_class = _get_device_info(mac)
                 entry = {
                     "mac": mac,
                     "name": name,
-                    "rssi": "N/A",
-                    "class": "Unknown"
+                    "rssi": rssi,
+                    "class": device_class
                 }
                 scan_results.append(entry)
-                _emit(callback, f"[+] BT Device Discovered: {name} (MAC: {mac})")
+                _emit(callback, f"[+] BT Device Discovered: {name} (MAC: {mac}, RSSI: {rssi}, Type: {device_class})")
 
     result_data = {
         "devices_found": len(scan_results),
