@@ -161,91 +161,77 @@ def run(config, callback=None, **kwargs):
 
     _emit(callback, f"[+] Controller detected:\n{controllers_output}")
 
-    # 5) Power on controller
+    # 5-7) Single bluetoothctl session: power on → scan on → wait → devices → scan off
+    # Using one persistent session is critical — if bluetoothctl exits between
+    # "scan on" and "devices", the daemon stops scanning and finds nothing.
 
-    _emit(callback, "[*] Powering on Bluetooth controller...")
-    try:
-        power_on = _run_cmd(["bluetoothctl", "power", "on"], timeout=5)
-        if power_on.returncode != 0:
-            logger.warning(f"Could not power on Bluetooth controller: {power_on.stderr.strip()}")
-            _emit(callback, f"[!] Warning: Could not power on controller: {power_on.stderr.strip()}")
-    except Exception as e:
-        logger.warning(f"Error while powering on controller: {e}")
-        _emit(callback, f"[!] Warning: Error while powering on controller: {e}")
-
-    # 6) Start scan
-
-    _emit(callback, "[*] Starting active Bluetooth scan...")
-    try:
-        scan_on = _run_cmd(["bluetoothctl", "scan", "on"], timeout=5)
-        if scan_on.returncode != 0:
-            logger.warning(f"Could not start active scan: {scan_on.stderr.strip()}")
-            _emit(callback, f"[!] Warning: Could not start active scan: {scan_on.stderr.strip()}")
-    except Exception as e:
-        logger.warning(f"Error while starting scan: {e}")
-        _emit(callback, f"[!] Warning: Error while starting scan: {e}")
-
-    # Allow some discovery time (respect config timeout, minimum 3s)
     wait_time = max(3, scan_duration)
-    _emit(callback, f"[*] Scanning for nearby Bluetooth devices for {wait_time}s...")
-    time.sleep(wait_time)
+    _emit(callback, f"[*] Starting active Bluetooth scan for {wait_time}s (single session)...")
 
-    # 7) Read discovered devices
-
-    _emit(callback, "[*] Querying discovered Bluetooth devices...")
+    bt_output = ""
     try:
-        devices_proc = _run_cmd(["bluetoothctl", "devices"], timeout=5)
+        proc = subprocess.Popen(
+            ["bluetoothctl"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        proc.stdin.write("power on\n")
+        proc.stdin.write("scan on\n")
+        proc.stdin.flush()
+
+        time.sleep(wait_time)
+
+        proc.stdin.write("devices\n")
+        proc.stdin.flush()
+        time.sleep(0.5)
+
+        proc.stdin.write("scan off\n")
+        proc.stdin.write("quit\n")
+        proc.stdin.flush()
+
+        bt_output, _ = proc.communicate(timeout=wait_time + 15)
     except subprocess.TimeoutExpired:
-        error_msg = "Timed out while reading discovered Bluetooth devices."
+        proc.kill()
+        error_msg = "bluetoothctl session timed out during scan."
         logger.error(error_msg)
         _emit(callback, f"[!] {error_msg}")
-        try:
-            _run_cmd(["bluetoothctl", "scan", "off"], timeout=5)
-        except Exception:
-            pass
         return create_result(module_name, "error", errors=[error_msg])
     except Exception as e:
-        error_msg = f"Failed to read discovered Bluetooth devices: {str(e)}"
-        logger.error(error_msg)
-        _emit(callback, f"[!] {error_msg}")
-        try:
-            _run_cmd(["bluetoothctl", "scan", "off"], timeout=5)
-        except Exception:
-            pass
-        return create_result(module_name, "error", errors=[error_msg])
-
-    # Stop scan
-    try:
-        _run_cmd(["bluetoothctl", "scan", "off"], timeout=5)
-    except Exception:
-        pass
-
-    if devices_proc.returncode != 0:
-        error_msg = f"bluetoothctl devices failed: {devices_proc.stderr.strip() or 'unknown error'}"
+        error_msg = f"Failed to run bluetoothctl session: {str(e)}"
         logger.error(error_msg)
         _emit(callback, f"[!] {error_msg}")
         return create_result(module_name, "error", errors=[error_msg])
 
-    # 8) Parse results
+    # 8) Parse results — collect MACs from both scan events and devices list
+
+    seen_macs = {}
+    for line in bt_output.splitlines():
+        line = line.strip()
+        # "[NEW] Device AA:BB:CC:DD:EE:FF Name" — live discovery during scan
+        # "Device AA:BB:CC:DD:EE:FF Name"        — from devices command
+        for prefix in ("[NEW] Device ", "Device "):
+            if prefix in line:
+                after = line[line.index(prefix) + len(prefix):]
+                parts = after.split(" ", 1)
+                if len(parts) == 2:
+                    mac, name = parts[0].strip(), parts[1].strip()
+                    if mac not in seen_macs:
+                        seen_macs[mac] = name
+                break
 
     scan_results = []
-
-    for line in devices_proc.stdout.splitlines():
-        line = line.strip()
-        if line.startswith("Device "):
-            parts = line.split(" ", 2)
-            if len(parts) >= 3:
-                mac = parts[1].strip()
-                name = parts[2].strip()
-                rssi, device_class = _get_device_info(mac)
-                entry = {
-                    "mac": mac,
-                    "name": name,
-                    "rssi": rssi,
-                    "class": device_class
-                }
-                scan_results.append(entry)
-                _emit(callback, f"[+] BT Device Discovered: {name} (MAC: {mac}, RSSI: {rssi}, Type: {device_class})")
+    for mac, name in seen_macs.items():
+        rssi, device_class = _get_device_info(mac)
+        entry = {
+            "mac": mac,
+            "name": name,
+            "rssi": rssi,
+            "class": device_class
+        }
+        scan_results.append(entry)
+        _emit(callback, f"[+] BT Device Discovered: {name} (MAC: {mac}, RSSI: {rssi}, Type: {device_class})")
 
     result_data = {
         "devices_found": len(scan_results),
