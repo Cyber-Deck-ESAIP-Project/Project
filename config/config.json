@@ -9,7 +9,8 @@
         "lan_scan": {
             "enabled": true,
             "interface": "wlan0",
-            "timeout": 30
+            "timeout": 30,
+            "max_deep_scan_hosts": 30
         },
         "wifi_audit": {
             "enabled": true,

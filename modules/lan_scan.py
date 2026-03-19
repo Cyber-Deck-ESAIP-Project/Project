@@ -74,9 +74,17 @@ def run(config, callback=None, target=None, **kwargs):
         if up_hosts:
             logger.info(f"Port scanning {len(up_hosts)} active hosts for services...")
             if callback: callback(f"\n[*] ICMP Sweep Complete. Found {len(up_hosts)} live targets.")
+
+            max_deep = int(mod_config.get("max_deep_scan_hosts", 30))
+            deep_hosts = up_hosts[:max_deep]
+            skipped = len(up_hosts) - len(deep_hosts)
+
+            if callback: callback(f"[*] Deep scanning {len(deep_hosts)} hosts (max_deep_scan_hosts={max_deep}).")
+            if skipped:
+                if callback: callback(f"[*] {skipped} additional hosts discovered but skipped for deep scan.")
             if callback: callback(f"[*] Engaging parallel deep-scan port enumeration profiling...")
-            
-            nm.scan(hosts=' '.join(up_hosts), arguments='-F -sV --version-light -T4')
+
+            nm.scan(hosts=' '.join(deep_hosts), arguments='-F -sV --version-light -T4 --host-timeout 15s --max-retries 1')
             
             for host in nm.all_hosts():
                 if nm[host].state() == 'up':
