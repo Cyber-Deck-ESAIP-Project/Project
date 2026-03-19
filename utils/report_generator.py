@@ -208,7 +208,7 @@ class ReportGenerator:
             <h2>TLS Audit Summary</h2>
             <div class="metric-grid">
                 <div class="metric"><span class="label">Hosts Audited</span><span class="value">{audited}</span></div>
-                <div class="metric"><span class="label">Reachable</span><span class="value">{reachable}</span></div>
+                <div class="metric"><span class="label">Reachable</span><span class="value" style="color:{'#34d399' if reachable else '#f87171'}">{reachable}/{audited}</span></div>
                 <div class="metric"><span class="label">Issues Found</span><span class="value" style="color:{'#f87171' if vuln_count else '#34d399'}">{vuln_count}</span></div>
             </div>
         </section>

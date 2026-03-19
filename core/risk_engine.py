@@ -23,22 +23,32 @@ class RiskEngine:
         """Parse scan results for specific threat indicators."""
         if not payload or not isinstance(payload, dict):
             return
-            
+
         mod = payload.get("module", "")
-        data = payload.get("data", {})
-        
-        if mod == "LAN Scan":
-            # Tally open ports across all hosts
+        # raw_data contains the full create_result() output
+        data = payload.get("raw_data", {}).get("data", {})
+
+        if mod == "LAN Scanning":
             results = data.get("scan_results", {})
-            port_count = sum(len(host_data.get("ports", [])) for host_data in results.values())
-            self._open_ports = port_count
-            
+            if isinstance(results, dict):
+                port_count = sum(len(host_data.get("ports", [])) for host_data in results.values())
+                self._open_ports = port_count
+
         elif mod == "WiFi Audit":
-            # Tally Open or WEP networks
             results = data.get("scan_results", [])
-            weak_count = sum(1 for net in results if "OPEN" in net.get("crypto", "") or "WEP" in net.get("crypto", ""))
-            self._weak_crypto_networks = weak_count
-            
+            if isinstance(results, list):
+                weak_count = sum(
+                    1 for net in results
+                    if "OPEN_NETWORK" in net.get("flags", []) or "WEAK_CRYPTO" in net.get("flags", [])
+                    or "OPN" in net.get("crypto", "") or "WEP" in net.get("crypto", "")
+                )
+                self._weak_crypto_networks = weak_count
+
+        elif mod == "Bluetooth Recon":
+            results = data.get("scan_results", [])
+            if isinstance(results, list):
+                self._unknown_devices = len(results)
+
         self.recalculate()
             
     def _on_honeypot_hit(self, data: Any):

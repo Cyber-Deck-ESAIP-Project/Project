@@ -111,7 +111,15 @@ def run(config: dict, callback=None, **kwargs) -> dict:
         return create_result(module_name, "error", errors=["Module disabled in config."])
 
     # Resolve target: GUI footer field takes priority, then config default
-    raw_target = kwargs.get("target", "") or mod_config.get("default_target", "")
+    # Ignore localhost/loopback — meaningless for TLS audit
+    _invalid = {"127.0.0.1", "localhost", ""}
+    raw_target = kwargs.get("target", "").strip()
+    if raw_target in _invalid:
+        raw_target = mod_config.get("default_target", "").strip()
+    if raw_target in _invalid:
+        msg = "No valid target specified. Enter an IP or hostname in the TARGET_HOST field (not 127.0.0.1)."
+        if callback: callback(f"[-] {msg}")
+        return create_result(module_name, "error", errors=[msg])
     targets: List[str] = []
 
     for part in raw_target.replace(",", " ").split():
