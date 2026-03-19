@@ -1,30 +1,32 @@
 # pyre-ignore-all-errors
 import time
 import nmap
-import socket
+import subprocess
 from utils.logger import get_logger
 from utils.result_handler import create_result
 
 logger = get_logger()
 
-# Helper function to get the local IP block of an interface.
-# Note: For cross-platform reliability, a robust implementation would use netifaces or psutil. 
-# We use a simple socket trick here for demonstration purposes, normally defaulting to the local subnet.
-def get_local_subnet():
+def get_local_subnet(interface="wlan0"):
+    """Detect subnet from the configured network interface using ip addr."""
     try:
-        # Connect to an external IP to find the preferred local IP
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        local_ip = s.getsockname()[0]
-        s.close()
-        
-        # Assume a standard /24 subnet for LAN
-        parts = local_ip.split('.')
-        base_ip = f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
-        return base_ip
+        result = subprocess.run(
+            ["ip", "-4", "addr", "show", interface],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5
+        )
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if line.startswith("inet "):
+                # e.g. "inet 172.16.0.132/24 brd ..."
+                cidr = line.split()[1]  # "172.16.0.132/24"
+                ip, prefix = cidr.split("/")
+                parts = ip.split(".")
+                subnet = f"{parts[0]}.{parts[1]}.{parts[2]}.0/{prefix}"
+                logger.info(f"Auto-detected subnet from {interface}: {subnet}")
+                return subnet
     except Exception as e:
-        logger.error(f"Could not determine local subnet: {e}")
-        return "192.168.1.0/24" # Fallback
+        logger.error(f"Could not detect subnet from {interface}: {e}")
+    return "192.168.1.0/24"  # Fallback
 
 def run(config, callback=None, target=None, **kwargs):
     """
@@ -42,7 +44,11 @@ def run(config, callback=None, target=None, **kwargs):
         if callback: callback(f"[!] Module {module_name} is disabled in config.")
         return create_result(module_name, "error", errors=["Module disabled in config."])
 
-    subnet = target if (target and target.strip()) else get_local_subnet()
+    _invalid = {"", "127.0.0.1", "localhost"}
+    if target and target.strip() and target.strip() not in _invalid:
+        subnet = target.strip()
+    else:
+        subnet = get_local_subnet(interface)
     logger.debug(f"Targeting Subnet: {subnet} on interface: {interface}")
     
     # --- ACTUAL NMAP SCAN LOGIC ---
