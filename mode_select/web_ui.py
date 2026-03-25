@@ -11,7 +11,7 @@ if PROJECT_ROOT not in sys.path:
 from core.event_bus import event_bus
 from core.app_state import state
 from core.controller import controller
-from modules import lan_scan, wifi_audit, bluetooth_recon, pentest_tools, anomaly_detect, dashboard, passive_monitor, arp_monitor, tls_audit
+from modules import lan_scan, wifi_audit, bluetooth_recon, pentest_tools, anomaly_detect, dashboard, passive_monitor, arp_monitor, tls_audit, hwmon_telemetry
 from utils.report_generator import generate_report
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
@@ -36,6 +36,7 @@ MODULES = {
     "TLS Audit": tls_audit.run,
     "Pentest Toolkit": pentest_tools.run,
     "Anomaly Detection": anomaly_detect.run,
+    "Hardware Monitor": hwmon_telemetry.run,
     "Reports": dashboard.run
 }
 

@@ -34,6 +34,16 @@
         "tls_audit": {
             "enabled": true,
             "default_target": ""
+        },
+        "hwmon_telemetry": {
+            "enabled": true,
+            "sampling_interval": 2,
+            "sample_count": 30,
+            "cpu_temp_threshold": 80,
+            "battery_threshold": 20,
+            "alert_on_throttle": true,
+            "collect_power_draw": true,
+            "performance_baseline_path": "logs/hw_perf_baseline.json"
         }
     },
     "dashboard": {
