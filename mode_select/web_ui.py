@@ -12,6 +12,7 @@ from core.event_bus import event_bus
 from core.app_state import state
 from core.controller import controller
 from modules import lan_scan, wifi_audit, bluetooth_recon, pentest_tools, anomaly_detect, dashboard, passive_monitor, arp_monitor, tls_audit
+from modules.dns_monitor import module as dns_monitor
 from utils.report_generator import generate_report
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
@@ -36,6 +37,7 @@ MODULES = {
     "TLS Audit": tls_audit.run,
     "Pentest Toolkit": pentest_tools.run,
     "Anomaly Detection": anomaly_detect.run,
+    "DNS Query Monitor": dns_monitor.run,
     "Reports": dashboard.run
 }
 

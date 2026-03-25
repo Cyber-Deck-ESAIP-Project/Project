@@ -34,6 +34,10 @@
         "tls_audit": {
             "enabled": true,
             "default_target": ""
+        },
+        "dns_monitor": {
+            "enabled": true,
+            "interface": "en0"
         }
     },
     "dashboard": {
