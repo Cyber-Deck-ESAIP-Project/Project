@@ -11,6 +11,7 @@ env/
 logs/*.log
 logs/*.json
 results/*.json
+results/*.html
 .vscode/
 .idea/
 *.swp
