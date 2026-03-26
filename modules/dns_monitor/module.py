@@ -3,6 +3,12 @@ Entry point for Cyber Deck integration.
 Provides a run() function for menu-based or CLI invocation.
 """
 import sys
+import os
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from utils.result_handler import create_result  # type: ignore
 from .monitor import main
 
 def run(config=None, target=None, callback=None, **kwargs):
@@ -48,10 +54,14 @@ def run(config=None, target=None, callback=None, **kwargs):
             msg = "\n".join(stats_msg)
             web_log(msg)
         web_log('[DNS Query Monitor] Stopped.')
-        return {"module": "dns_monitor", "status": "ok"}
+        return create_result("dns_monitor", "success", data={
+            "total_queries": monitor.total_count,
+            "suspicious_count": monitor.suspicious_count,
+            "top_domains": [{"domain": d, "count": c} for d, c in top_domains],
+        })
     except KeyboardInterrupt:
         web_log("\n[!] DNS Monitor stopped by user.")
-        return {"module": "dns_monitor", "status": "stopped"}
+        return create_result("dns_monitor", "success", data={"total_queries": 0, "suspicious_count": 0, "top_domains": []})
     except Exception as e:
         web_log(f"[DNS Query Monitor Error]: {e}")
-        return {"module": "dns_monitor", "status": "error", "error": str(e)}
+        return create_result("dns_monitor", "error", errors=[str(e)])

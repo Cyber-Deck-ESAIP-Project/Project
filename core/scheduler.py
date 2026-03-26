@@ -43,7 +43,7 @@ class AutomationScheduler:
             print("[Scheduler] Initiating Background Autonomous Recon Sweep...")
             # Dispatch LAN Scan via Controller (doesn't block)
             from utils.config_loader import load_config
-            controller.dispatch_module("LAN Scan", lan_scan.run, config=load_config())
+            controller.dispatch_module("LAN Scanning", lan_scan.run, config=load_config())
             
             # Wait for next cycle
             time.sleep(self._sweep_interval_seconds)
