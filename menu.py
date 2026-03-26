@@ -21,7 +21,7 @@ def discover_modules(modules_dir="modules"):
         if fname.endswith(".py") and not fname.startswith("__"):
             module_name = fname[:-3]  # type: ignore
             module_path = os.path.join(modules_dir, fname)
-            
+
             # Load the module dynamically
             spec = importlib.util.spec_from_file_location(module_name, module_path)
             if spec and hasattr(spec, "loader") and spec.loader:
@@ -31,7 +31,7 @@ def discover_modules(modules_dir="modules"):
                     # Tell pyright that loader has exec_module
                     if hasattr(spec.loader, "exec_module"):
                         spec.loader.exec_module(module)  # type: ignore
-                    
+
                     # Verify the contract: 'run' function must exist
                     if hasattr(module, 'run') and callable(getattr(module, 'run')):
                         available_modules[module_name] = module
@@ -42,6 +42,27 @@ def discover_modules(modules_dir="modules"):
                     logger.error(f"Failed to load module '{module_name}': {e}")
             else:
                 logger.error(f"Could not create spec for module '{module_name}'.")
+        elif os.path.isdir(os.path.join(modules_dir, fname)) and not fname.startswith("__"):
+            # Support package-style modules (subdirectory with __init__.py)
+            init_path = os.path.join(modules_dir, fname, "__init__.py")
+            if os.path.exists(init_path):
+                spec = importlib.util.spec_from_file_location(
+                    fname, init_path,
+                    submodule_search_locations=[os.path.join(modules_dir, fname)]
+                )
+                if spec and spec.loader:
+                    try:
+                        module = importlib.util.module_from_spec(spec)
+                        sys.modules[fname] = module
+                        if hasattr(spec.loader, "exec_module"):
+                            spec.loader.exec_module(module)  # type: ignore
+                        if hasattr(module, 'run') and callable(getattr(module, 'run')):
+                            available_modules[fname] = module
+                            logger.debug(f"Successfully loaded package module: {fname}")
+                        else:
+                            logger.warning(f"Package '{fname}' does not implement the run(config) contract. Skipping.")
+                    except Exception as e:
+                        logger.error(f"Failed to load package module '{fname}': {e}")
 
     return available_modules
 
