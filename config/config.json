@@ -44,6 +44,10 @@
             "alert_on_throttle": true,
             "collect_power_draw": true,
             "performance_baseline_path": "logs/hw_perf_baseline.json"
+        },
+        "dns_monitor": {
+            "enabled": true,
+            "interface": "en0"
         }
     },
     "dashboard": {
