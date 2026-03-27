@@ -146,6 +146,49 @@ def _run_heuristics(history: List[Dict[str, Any]]) -> List[Dict[str, str]]:
                     f"High-risk ports (FTP/Telnet/SMB/RDP/VNC) open on: {', '.join(risky_hosts[:5])}.",
                 )
 
+        # Rule 8: Hardware in critical state
+        if module in ("hwmon_telemetry", "Hardware Monitor"):
+            risk = data.get("risk_assessment", {})
+            critical_items = [
+                k for k in ("thermal", "battery", "power")
+                if risk.get(k) == "CRITICAL"
+            ]
+            overall = risk.get("overall", 100)
+            if critical_items or overall < 40:
+                detail_parts = []
+                if critical_items:
+                    detail_parts.append(f"{', '.join(critical_items)} status CRITICAL")
+                if overall < 40:
+                    detail_parts.append(f"deployment readiness {overall}/100")
+                add_flag(
+                    "HIGH",
+                    "HARDWARE_CRITICAL",
+                    f"Hardware fault at {ts}: {'; '.join(detail_parts)}. Field reliability compromised.",
+                )
+
+        # Rule 9: Suspicious DNS queries detected
+        if module in ("dns_monitor", "DNS Query Monitor"):
+            suspicious = data.get("suspicious_count", 0)
+            if suspicious > 0:
+                add_flag(
+                    "HIGH",
+                    "SUSPICIOUS_DNS_ACTIVITY",
+                    f"{suspicious} suspicious DNS query(ies) detected at {ts}. Possible C&C beacon or DNS tunneling.",
+                )
+
+        # Rule 10: Critical or high-severity CVEs found on network hosts
+        if module in ("cve_matcher", "CVE Matcher"):
+            summary = data.get("severity_summary", {})
+            critical = summary.get("CRITICAL", 0)
+            high = summary.get("HIGH", 0)
+            if critical > 0 or high > 0:
+                add_flag(
+                    "CRITICAL" if critical > 0 else "HIGH",
+                    "CRITICAL_CVES_FOUND",
+                    f"CVE Matcher found {critical} CRITICAL and {high} HIGH severity "
+                    f"vulnerabilities on network hosts at {ts}. Immediate patching required.",
+                )
+
     return flags
 
 

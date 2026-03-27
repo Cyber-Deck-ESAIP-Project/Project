@@ -371,12 +371,15 @@ The `anomaly_detect` module analyses the last 20 records from `logs/history.json
 | Rule | Severity | Trigger condition |
 |---|---|---|
 | `HIGH_ERROR_RATE` | HIGH | >50% of last 20 ops returned `status: error` |
-| `ARP_SPOOFING_DETECTED` | CRITICAL | `passive_monitor` or `arp_monitor` logged ARP conflicts |
+| `ARP_SPOOFING_DETECTED` | CRITICAL | `passive_monitor` logged ARP protocol anomalies |
 | `PORT_SCAN_ACTIVITY` | HIGH | `passive_monitor` found entries in `scanners_detected` |
 | `ICMP_FLOOD_DETECTED` | MEDIUM | `passive_monitor` logged ICMP protocol anomalies |
 | `WEAK_WIFI_NETWORKS` | MEDIUM | `wifi_audit` found `WEAK_CRYPTO` or `OPEN_NETWORK` flags |
 | `LARGE_LAN_FOOTPRINT` | MEDIUM | LAN scan found 20+ live hosts |
 | `HIGH_RISK_PORTS_OPEN` | HIGH | Ports 21/23/445/3389/5900 open on any LAN host |
+| `HARDWARE_CRITICAL` | HIGH | `hwmon_telemetry` found thermal/battery CRITICAL or readiness score < 40 |
+| `SUSPICIOUS_DNS_ACTIVITY` | HIGH | `dns_monitor` flagged suspicious DNS queries (C&C/tunneling indicators) |
+| `CRITICAL_CVES_FOUND` | CRITICAL/HIGH | `cve_matcher` found CRITICAL or HIGH severity CVEs on network hosts |
 
 If `GEMINI_API_KEY` is set, the flagged rules are sent to `gemini-pro` and a threat narrative is appended to the console output.
 

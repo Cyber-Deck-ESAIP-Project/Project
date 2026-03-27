@@ -184,12 +184,15 @@ Note: This lists cached devices, not a live active scan. RSSI is reported as "N/
 | Rule | Severity | Trigger |
 |---|---|---|
 | `HIGH_ERROR_RATE` | HIGH | >50% of last 20 ops errored |
-| `ARP_SPOOFING_DETECTED` | CRITICAL | ARP conflicts found by passive_monitor or arp_monitor |
+| `ARP_SPOOFING_DETECTED` | CRITICAL | ARP conflicts found by passive_monitor |
 | `PORT_SCAN_ACTIVITY` | HIGH | Scanners detected by passive_monitor |
 | `ICMP_FLOOD_DETECTED` | MEDIUM | ICMP flood detected by passive_monitor |
 | `WEAK_WIFI_NETWORKS` | MEDIUM | WiFi audit found open/WEP networks |
 | `LARGE_LAN_FOOTPRINT` | MEDIUM | LAN scan found 20+ live hosts |
 | `HIGH_RISK_PORTS_OPEN` | HIGH | Ports 21/23/445/3389/5900 open on any host |
+| `HARDWARE_CRITICAL` | HIGH | Hardware Monitor found CRITICAL thermal/battery status or readiness < 40 |
+| `SUSPICIOUS_DNS_ACTIVITY` | HIGH | DNS Monitor flagged suspicious queries (C&C/tunneling indicators) |
+| `CRITICAL_CVES_FOUND` | CRITICAL/HIGH | CVE Matcher found CRITICAL or HIGH severity CVEs on network hosts |
 
 ---
 
