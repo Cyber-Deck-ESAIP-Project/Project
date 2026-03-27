@@ -326,6 +326,35 @@
                     <div id="readiness-score" style="text-align:center; margin-top:6px; font-size:1.1rem; font-weight:bold;"></div>
                 </div>
             </div>
+            <div style="display:flex; gap:15px; flex-wrap:wrap; margin-top:12px;">
+                <div class="chart-box" style="flex:1; min-width:160px;">
+                    <h3>BATTERY</h3>
+                    <div id="hwmon-battery-charge" style="text-align:center; font-size:1.4rem; font-weight:bold; margin:8px 0;"></div>
+                    <div id="hwmon-battery-status" style="text-align:center; font-size:0.8rem; color:var(--accent-cyan);"></div>
+                </div>
+                <div class="chart-box" style="flex:1; min-width:160px;">
+                    <h3>POWER DRAW</h3>
+                    <div id="hwmon-power-avg" style="text-align:center; font-size:1.4rem; font-weight:bold; color:var(--accent-cyan); margin:8px 0;"></div>
+                    <div id="hwmon-power-max" style="text-align:center; font-size:0.8rem; color:var(--accent-orange);"></div>
+                </div>
+                <div class="chart-box" style="flex:2; min-width:200px;">
+                    <h3>RISK STATUS</h3>
+                    <div style="display:flex; gap:10px; justify-content:space-around; margin-top:10px;">
+                        <div style="text-align:center;">
+                            <div style="font-size:0.75rem; color:var(--accent-cyan); margin-bottom:4px;">THERMAL</div>
+                            <div id="hwmon-risk-thermal" style="font-weight:bold; font-size:0.9rem;"></div>
+                        </div>
+                        <div style="text-align:center;">
+                            <div style="font-size:0.75rem; color:var(--accent-cyan); margin-bottom:4px;">BATTERY</div>
+                            <div id="hwmon-risk-battery" style="font-weight:bold; font-size:0.9rem;"></div>
+                        </div>
+                        <div style="text-align:center;">
+                            <div style="font-size:0.75rem; color:var(--accent-cyan); margin-bottom:4px;">POWER</div>
+                            <div id="hwmon-risk-power" style="font-weight:bold; font-size:0.9rem;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- CVE Matcher Charts -->
@@ -519,6 +548,33 @@
             const scoreEl = document.getElementById('readiness-score');
             scoreEl.textContent = `${score}/100`;
             scoreEl.style.color = scoreColor;
+
+            // Battery metrics
+            const battData = data.battery || {};
+            const charge = battData.current_charge !== undefined ? battData.current_charge : '--';
+            const battStatus = battData.status || '--';
+            const plugged = battData.plugged_in ? ' · Charging' : '';
+            const chargeColor = (typeof charge === 'number') ? (charge >= 50 ? '#4ADE80' : charge >= 20 ? '#F59E0B' : '#FF4444') : '#97a8be';
+            const chargeEl = document.getElementById('hwmon-battery-charge');
+            chargeEl.textContent = typeof charge === 'number' ? `${charge}%` : charge;
+            chargeEl.style.color = chargeColor;
+            document.getElementById('hwmon-battery-status').textContent = `${battStatus}${plugged}`;
+
+            // Power metrics
+            const powerData = data.power || {};
+            const avgW = powerData.avg_power_w !== undefined ? powerData.avg_power_w.toFixed(2) : '--';
+            const maxW = powerData.max_power_w !== undefined ? powerData.max_power_w.toFixed(2) : '--';
+            document.getElementById('hwmon-power-avg').textContent = avgW !== '--' ? `${avgW}W` : '--';
+            document.getElementById('hwmon-power-max').textContent = maxW !== '--' ? `Max: ${maxW}W` : '';
+
+            // Risk status indicators
+            const riskColor = v => ({ CRITICAL: '#FF4444', WARNING: '#F59E0B', OK: '#4ADE80' })[(v || '').toUpperCase()] || '#97a8be';
+            ['thermal', 'battery', 'power'].forEach(key => {
+                const el = document.getElementById(`hwmon-risk-${key}`);
+                const val = risk[key] || 'N/A';
+                el.textContent = val;
+                el.style.color = riskColor(val);
+            });
         }
 
         function renderCveCharts(data) {
@@ -553,6 +609,9 @@
             const SCOLOR = { CRITICAL: '#FF4444', HIGH: '#F59E0B', MEDIUM: '#FACC15', LOW: '#4ADE80', UNKNOWN: '#888888' };
 
             if (vulns.length === 0) {
+                noResults.textContent = (data.services_scanned || 0) === 0
+                    ? 'No service data available from LAN scan. Re-run LAN Scanning first.'
+                    : 'No CVEs found for scanned services. Network looks clean.';
                 noResults.style.display = 'block';
             } else {
                 noResults.style.display = 'none';

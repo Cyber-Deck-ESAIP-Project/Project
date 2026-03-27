@@ -322,6 +322,223 @@ class ReportGenerator:
         """ + self._errors_card(data)
 
     # ------------------------------------------------------------------
+    # DNS Query Monitor
+    # ------------------------------------------------------------------
+
+    def _build_dns_html(self, data: Dict[str, Any]) -> str:
+        payload     = data.get("data", {}) if isinstance(data, dict) else {}
+        total       = self._safe_int(payload.get("total_queries", 0))
+        suspicious  = self._safe_int(payload.get("suspicious_count", 0))
+        top_domains = payload.get("top_domains", [])
+
+        domain_rows = "".join(
+            f"<tr>"
+            f"<td>{self._clean_text(d.get('domain', '?'))}</td>"
+            f"<td>{self._safe_int(d.get('count', 0))}</td>"
+            "</tr>"
+            for d in (top_domains if isinstance(top_domains, list) else []) if isinstance(d, dict)
+        ) or "<tr><td colspan='2' class='muted'>No domains captured.</td></tr>"
+
+        susp_color = "#f87171" if suspicious else "#34d399"
+
+        return self._header_card(data) + f"""
+        <section class="card">
+            <h2>DNS Query Monitor</h2>
+            <div class="metric-grid">
+                <div class="metric"><span class="label">Total Queries</span><span class="value">{total}</span></div>
+                <div class="metric"><span class="label">Suspicious</span><span class="value" style="color:{susp_color}">{suspicious}</span></div>
+            </div>
+        </section>
+        <section class="card">
+            <h2>Top Domains</h2>
+            <div class="table-wrap">
+                <table style="min-width:300px">
+                    <thead><tr><th>Domain</th><th>Count</th></tr></thead>
+                    <tbody>{domain_rows}</tbody>
+                </table>
+            </div>
+        </section>
+        """ + self._errors_card(data)
+
+    # ------------------------------------------------------------------
+    # Hardware Monitor
+    # ------------------------------------------------------------------
+
+    def _build_hwmon_html(self, data: Dict[str, Any]) -> str:
+        payload  = data.get("data", {}) if isinstance(data, dict) else {}
+        samples  = self._safe_int(payload.get("samples_collected", 0))
+        duration = round(float(payload.get("duration_seconds", 0)), 1)
+        cpu      = payload.get("cpu", {}) if isinstance(payload.get("cpu"), dict) else {}
+        thermal  = payload.get("thermal", {}) if isinstance(payload.get("thermal"), dict) else {}
+        battery  = payload.get("battery", {}) if isinstance(payload.get("battery"), dict) else {}
+        power    = payload.get("power", {}) if isinstance(payload.get("power"), dict) else {}
+        risk     = payload.get("risk_assessment", {}) if isinstance(payload.get("risk_assessment"), dict) else {}
+
+        overall  = self._safe_int(risk.get("overall", 0))
+        overall_color = "#f87171" if overall < 60 else ("#fbbf24" if overall < 80 else "#34d399")
+
+        def _risk_color(val: str) -> str:
+            v = str(val).upper()
+            return "#f87171" if v == "CRITICAL" else ("#fbbf24" if v == "WARNING" else "#34d399")
+
+        procs = power.get("high_drain_processes", [])
+        proc_rows = "".join(
+            f"<tr>"
+            f"<td>{self._clean_text(p.get('name', '-'))}</td>"
+            f"<td>{self._clean_text(p.get('pid', '-'))}</td>"
+            f"<td>{self._clean_text(p.get('cpu_percent', '-'))}%</td>"
+            "</tr>"
+            for p in (procs if isinstance(procs, list) else []) if isinstance(p, dict)
+        ) or "<tr><td colspan='3' class='muted'>No high-drain processes.</td></tr>"
+
+        plugged = battery.get("plugged_in")
+        plugged_str = "Yes" if plugged else ("No" if plugged is not None else "-")
+        time_rem = battery.get("time_remaining_minutes")
+        time_str = f"{time_rem} min" if time_rem is not None else "-"
+
+        return self._header_card(data) + f"""
+        <section class="card">
+            <h2>Hardware Telemetry Summary</h2>
+            <div class="metric-grid">
+                <div class="metric"><span class="label">Samples Collected</span><span class="value">{samples}</span></div>
+                <div class="metric"><span class="label">Duration</span><span class="value">{duration}s</span></div>
+                <div class="metric"><span class="label">Deployment Readiness</span><span class="value" style="color:{overall_color}">{overall}/100</span></div>
+            </div>
+        </section>
+        <section class="card">
+            <h2>Risk Assessment</h2>
+            <div class="metric-grid">
+                <div class="metric"><span class="label">Thermal</span><span class="value" style="color:{_risk_color(risk.get('thermal','OK'))}">{self._clean_text(risk.get('thermal','N/A'))}</span></div>
+                <div class="metric"><span class="label">Battery</span><span class="value" style="color:{_risk_color(risk.get('battery','OK'))}">{self._clean_text(risk.get('battery','N/A'))}</span></div>
+                <div class="metric"><span class="label">Power</span><span class="value" style="color:{_risk_color(risk.get('power','OK'))}">{self._clean_text(risk.get('power','N/A'))}</span></div>
+            </div>
+        </section>
+        <section class="card">
+            <h2>CPU</h2>
+            <div class="metric-grid">
+                <div class="metric"><span class="label">Avg Usage</span><span class="value">{cpu.get('avg_usage_percent', '-')}%</span></div>
+                <div class="metric"><span class="label">Max Usage</span><span class="value">{cpu.get('max_usage_percent', '-')}%</span></div>
+                <div class="metric"><span class="label">Frequency</span><span class="value">{cpu.get('freq_mhz', '-')} MHz</span></div>
+                <div class="metric"><span class="label">Cores</span><span class="value">{cpu.get('core_count', '-')}</span></div>
+            </div>
+        </section>
+        <section class="card">
+            <h2>Thermal</h2>
+            <div class="metric-grid">
+                <div class="metric"><span class="label">Avg Temp</span><span class="value">{thermal.get('avg_temp_c', '-')}°C</span></div>
+                <div class="metric"><span class="label">Max Temp</span><span class="value">{thermal.get('max_temp_c', '-')}°C</span></div>
+                <div class="metric"><span class="label">Current Temp</span><span class="value">{thermal.get('current_temp_c', '-')}°C</span></div>
+            </div>
+        </section>
+        <section class="card">
+            <h2>Battery</h2>
+            <div class="metric-grid">
+                <div class="metric"><span class="label">Charge</span><span class="value">{battery.get('current_charge', '-')}%</span></div>
+                <div class="metric"><span class="label">Status</span><span class="value">{self._clean_text(battery.get('status','-'))}</span></div>
+                <div class="metric"><span class="label">Plugged In</span><span class="value">{plugged_str}</span></div>
+                <div class="metric"><span class="label">Time Remaining</span><span class="value">{time_str}</span></div>
+            </div>
+        </section>
+        <section class="card">
+            <h2>Power</h2>
+            <div class="metric-grid">
+                <div class="metric"><span class="label">Avg Draw</span><span class="value">{power.get('avg_power_w', '-')}W</span></div>
+                <div class="metric"><span class="label">Max Draw</span><span class="value">{power.get('max_power_w', '-')}W</span></div>
+            </div>
+            <div class="table-wrap" style="margin-top:12px">
+                <h3 style="margin:0 0 8px 0;font-size:0.95rem">High-Drain Processes</h3>
+                <table style="min-width:300px">
+                    <thead><tr><th>Process</th><th>PID</th><th>CPU %</th></tr></thead>
+                    <tbody>{proc_rows}</tbody>
+                </table>
+            </div>
+        </section>
+        """ + self._errors_card(data)
+
+    # ------------------------------------------------------------------
+    # CVE Matcher
+    # ------------------------------------------------------------------
+
+    def _build_cve_html(self, data: Dict[str, Any]) -> str:
+        payload   = data.get("data", {}) if isinstance(data, dict) else {}
+        scanned   = self._safe_int(payload.get("services_scanned", 0))
+        total     = self._safe_int(payload.get("cves_found", 0))
+        summary   = payload.get("severity_summary", {}) if isinstance(payload.get("severity_summary"), dict) else {}
+        vulns     = payload.get("vulnerabilities", [])
+
+        n_crit = self._safe_int(summary.get("CRITICAL", 0))
+        n_high = self._safe_int(summary.get("HIGH", 0))
+
+        sev_color_map = {
+            "CRITICAL": "#f87171",
+            "HIGH":     "#f97316",
+            "MEDIUM":   "#fbbf24",
+            "LOW":      "#34d399",
+            "UNKNOWN":  "#97a8be",
+        }
+
+        sev_rows_parts = []
+        for sev in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"):
+            color = sev_color_map.get(sev, "#97a8be")
+            sev_rows_parts.append(
+                f"<tr>"
+                f"<td style='color:{color};font-weight:600'>{self._clean_text(sev)}</td>"
+                f"<td>{self._safe_int(summary.get(sev, 0))}</td>"
+                "</tr>"
+            )
+        sev_rows = "".join(sev_rows_parts)
+
+        vuln_rows_parts = []
+        for v in (vulns if isinstance(vulns, list) else []):
+            if not isinstance(v, dict):
+                continue
+            sev_key = str(v.get("severity", "")).upper()
+            sev_c   = sev_color_map.get(sev_key, "#97a8be")
+            vuln_rows_parts.append(
+                f"<tr>"
+                f"<td><code>{self._clean_text(v.get('ip', '-'))}</code></td>"
+                f"<td>{self._clean_text(v.get('port', '-'))}</td>"
+                f"<td>{self._clean_text(v.get('service', '-'))}</td>"
+                f"<td>{self._clean_text(v.get('product', '-'))} {self._clean_text(v.get('version', ''))}</td>"
+                f"<td><code style='font-size:0.82rem'>{self._clean_text(v.get('cve_id', '-'))}</code></td>"
+                f"<td>{self._clean_text(v.get('cvss_score', '-'))}</td>"
+                f"<td style='color:{sev_c};font-weight:600'>{self._clean_text(v.get('severity', '-'))}</td>"
+                f"<td style='font-size:0.82rem'>{self._clean_text(v.get('description', '-'))}</td>"
+                "</tr>"
+            )
+        vuln_rows = "".join(vuln_rows_parts) or "<tr><td colspan='8' class='muted'>No vulnerabilities found.</td></tr>"
+
+        return self._header_card(data) + f"""
+        <section class="card">
+            <h2>CVE Matcher Summary</h2>
+            <div class="metric-grid">
+                <div class="metric"><span class="label">Services Scanned</span><span class="value">{scanned}</span></div>
+                <div class="metric"><span class="label">CVEs Found</span><span class="value" style="color:{'#f87171' if total else '#34d399'}">{total}</span></div>
+                <div class="metric"><span class="label">Critical</span><span class="value" style="color:{'#f87171' if n_crit else '#34d399'}">{n_crit}</span></div>
+                <div class="metric"><span class="label">High</span><span class="value" style="color:{'#f97316' if n_high else '#34d399'}">{n_high}</span></div>
+            </div>
+        </section>
+        <section class="card">
+            <h2>Severity Breakdown</h2>
+            <div class="table-wrap">
+                <table style="min-width:200px">
+                    <thead><tr><th>Severity</th><th>Count</th></tr></thead>
+                    <tbody>{sev_rows}</tbody>
+                </table>
+            </div>
+        </section>
+        <section class="card">
+            <h2>Vulnerabilities</h2>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>IP</th><th>Port</th><th>Service</th><th>Product/Version</th><th>CVE ID</th><th>CVSS</th><th>Severity</th><th>Description</th></tr></thead>
+                    <tbody>{vuln_rows}</tbody>
+                </table>
+            </div>
+        </section>
+        """ + self._errors_card(data)
+
+    # ------------------------------------------------------------------
     # Pentest Toolkit
     # ------------------------------------------------------------------
 
@@ -643,8 +860,11 @@ class ReportGenerator:
             "passive monitor":  "passive_monitor",
             "arp monitor":      "arp_monitor",
             "tls audit":        "tls_audit",
+            "dns query monitor":"dns_monitor",
+            "hardware monitor": "hwmon_telemetry",
+            "cve matcher":      "cve_matcher",
         }
-        module = display_name_map.get(module, module)
+        module = display_name_map.get(module.lower(), module)
         dispatch = {
             "wifi_audit":       self._build_wifi_html,
             "lan_scan":         self._build_lan_html,
@@ -654,6 +874,9 @@ class ReportGenerator:
             "pentest_tools":    self._build_pentest_html,
             "anomaly_detect":   self._build_anomaly_detect_html,
             "passive_monitor":  self._build_passive_html,
+            "dns_monitor":      self._build_dns_html,
+            "hwmon_telemetry":  self._build_hwmon_html,
+            "cve_matcher":      self._build_cve_html,
         }
         if module in dispatch:
             return dispatch[module](data)
