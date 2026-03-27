@@ -26,17 +26,16 @@ def run(config=None, target=None, callback=None, **kwargs):
             print(msg)
 
     try:
-        iface = None
-        if config and isinstance(config, dict):
-            iface = config.get('modules', {}).get('dns_monitor', {}).get('interface')
+        mod_config = config.get('modules', {}).get('dns_monitor', {}) if config and isinstance(config, dict) else {}
+        iface = mod_config.get('interface')
+        duration = mod_config.get('duration', 30)
         monitor = DNSMonitor(iface=iface, callback=callback)
 
         # Run monitor in a thread so web UI doesn't block
         t = threading.Thread(target=monitor.start, daemon=True)
         t.start()
-        web_log('[DNS Query Monitor] Started.')
-        # Let it run for a demo period or until stopped by UI (simulate)
-        time.sleep(10)
+        web_log(f'[DNS Query Monitor] Started. Monitoring {iface or "default"} for {duration}s...')
+        time.sleep(duration)
         monitor.running = False
         t.join()
         # After scan, always send stats to dashboard

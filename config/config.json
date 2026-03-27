@@ -47,7 +47,8 @@
         },
         "dns_monitor": {
             "enabled": true,
-            "interface": "wlan0"
+            "interface": "wlan0",
+            "duration": 30
         },
         "cve_matcher": {
             "enabled": true
