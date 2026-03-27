@@ -11,7 +11,7 @@ if PROJECT_ROOT not in sys.path:
 from core.event_bus import event_bus
 from core.app_state import state
 from core.controller import controller
-from modules import lan_scan, wifi_audit, bluetooth_recon, pentest_tools, anomaly_detect, dashboard, passive_monitor, arp_monitor, tls_audit, hwmon_telemetry
+from modules import lan_scan, wifi_audit, bluetooth_recon, pentest_tools, anomaly_detect, dashboard, passive_monitor, arp_monitor, tls_audit, hwmon_telemetry, cve_matcher
 from modules.dns_monitor import module as dns_monitor
 from utils.report_generator import generate_report
 
@@ -24,7 +24,8 @@ api_state = {
     "risk_level": 0,
     "ops": 0,
     "entities": 0,
-    "lockdown": False
+    "lockdown": False,
+    "latest_result": {}
 }
 
 # Define the runnable modules mapping
@@ -39,6 +40,7 @@ MODULES = {
     "Anomaly Detection": anomaly_detect.run,
     "Hardware Monitor": hwmon_telemetry.run,
     "DNS Query Monitor": dns_monitor.run,
+    "CVE Matcher": cve_matcher.run,
     "Reports": dashboard.run
 }
 
@@ -65,10 +67,16 @@ def on_telemetry_update(telemetry: dict):
     api_state["ops"] = telemetry.get('total_operations', 0)
     api_state["entities"] = telemetry.get('entities_tracked', 0)
 
+def on_scan_completed(record: dict):
+    module = record.get("module", "")
+    data = record.get("raw_data", {}).get("data", {})
+    api_state["latest_result"] = {"module": module, "data": data}
+
 event_bus.subscribe("MODULE_STARTED", on_module_start)
 event_bus.subscribe("MODULE_STOPPED", on_module_stop)
 event_bus.subscribe("RISK_UPDATED", on_risk_update)
 event_bus.subscribe("HISTORY_UPDATED", on_telemetry_update)
+event_bus.subscribe("SCAN_COMPLETED", on_scan_completed)
 
 # --- Routes ---
 

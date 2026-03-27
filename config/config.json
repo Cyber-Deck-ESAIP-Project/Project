@@ -48,6 +48,9 @@
         "dns_monitor": {
             "enabled": true,
             "interface": "en0"
+        },
+        "cve_matcher": {
+            "enabled": true
         }
     },
     "dashboard": {

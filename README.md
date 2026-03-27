@@ -22,7 +22,15 @@ The current implementation adds a reporting workflow centered on:
 6. TLS Audit (`modules/tls_audit.py`)
 7. Pentest Tools (`modules/pentest_tools.py`)
 8. AI Anomaly Detection (`modules/anomaly_detect.py`)
-9. Reports & Analytics (`modules/dashboard.py`)
+9. Hardware Telemetry Monitor (`modules/hwmon_telemetry.py`)
+10. Real-Time DNS Query Monitor (`modules/dns_monitor/`)
+11. CVE Vulnerability Matcher (`modules/cve_matcher.py`)
+12. Reports & Analytics (`modules/dashboard.py`)
+
+### Visual Dashboard
+After running **Hardware Monitor** or **CVE Matcher**, the dashboard automatically renders interactive charts below the console:
+- **Hardware Monitor** — CPU usage bar chart, temperature bar chart, deployment readiness donut (0–100 score)
+- **CVE Matcher** — severity distribution donut (Critical/High/Medium/Low) + color-coded CVE findings table
 
 ### Executive Dashboard Features
 - Aggregated operations summary across stored scan results

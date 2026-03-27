@@ -19,10 +19,16 @@ Complete operator guide for CyberDeck OS v2.0. Covers every module, the GUI layo
 │ [ WIFI     ] │                                  │                   │
 │ [ BLUETOOT ] │                                  │                   │
 │ [ TLS AUDI ] │                                  │                   │
+│ [ DNS MON  ] │                                  │                   │
 │ [ PENTEST  ] │                                  │                   │
 │ [ ANOMALY  ] │                                  │                   │
+│ [ HW MON   ] │                                  │                   │
+│ [ CVE MATC ] │                                  │                   │
 │ [ REPORTS  ] │                                  │                   │
 ├──────────────┴──────────────────────────────────┴───────────────────┤
+│ ┌─ VISUAL INTEL ───────────────────────────────────────────────────┐ │
+│ │ Charts appear here after Hardware Monitor or CVE Matcher runs    │ │
+│ └──────────────────────────────────────────────────────────────────┘ │
 │ TARGET_HOST: [ 127.0.0.1                                           ] │  ← Footer
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -187,7 +193,59 @@ Note: This lists cached devices, not a live active scan. RSSI is reported as "N/
 
 ---
 
-## 10. Reviewing Results
+## 10. DNS Query Monitor
+
+**What it does:** Captures live DNS queries on the network using Scapy (UDP port 53). Tracks query frequency per domain and applies heuristics to flag suspicious queries — unusually long domain names, rare TLDs (`.xyz`, `.tk`), high digit-to-letter ratio, or long consonant runs.
+
+**Steps:**
+1. Click **[ DNS QUERY MONITOR ]**.
+2. The console shows each DNS query as it is captured.
+3. Suspicious domains are flagged with `[SUSPICIOUS]` immediately.
+4. Top 3 most-queried domains are printed every 10 seconds.
+
+**Requires root.**
+
+---
+
+## 11. Hardware Monitor
+
+**What it does:** Samples CPU usage, temperature, battery charge, and estimated power draw 30 times over ~60 seconds. Aggregates into statistics and calculates a deployment readiness score (0–100).
+
+**Steps:**
+1. Click **[ HARDWARE MONITOR ]**.
+2. Progress is shown in the console for each sample collected.
+3. When complete, a **visual panel** automatically appears below the console showing:
+   - **CPU Usage** bar chart (Average / Maximum / Minimum %)
+   - **Temperature** bar chart (Average / Maximum / Current °C)
+   - **Deployment Readiness** donut (score colour-coded: green ≥70, orange ≥40, red <40)
+
+**Output fields:** `cpu`, `thermal`, `battery`, `power` (aggregated stats), `risk_assessment`.
+
+---
+
+## 12. CVE Vulnerability Matcher
+
+**What it does:** Reads the latest LAN Scan result from session history, extracts every discovered service name and version string (e.g. `Apache 2.4.51`, `OpenSSH 7.9`), and queries the free NVD (National Vulnerability Database) API for matching known CVEs.
+
+**Steps:**
+1. Run **LAN Scanning** first — CVE Matcher needs its output.
+2. Click **[ CVE MATCHER ]**.
+3. Each unique service is checked against NVD (allow ~6s per service for rate limits).
+4. When complete, a **visual panel** appears showing:
+   - **Severity Donut** — breakdown of Critical / High / Medium / Low / Unknown CVEs
+   - **CVE Table** — sorted by CVSS score, colour-coded by severity
+
+**Severity colour coding:**
+- Red — CRITICAL (CVSS 9.0–10.0)
+- Orange — HIGH (CVSS 7.0–8.9)
+- Yellow — MEDIUM (CVSS 4.0–6.9)
+- Green — LOW (CVSS 0.1–3.9)
+
+**Note:** Caps at 15 unique services to keep runtime reasonable. Re-run LAN Scanning to refresh the service data.
+
+---
+
+## 13. Reviewing Results
 
 **What it does:** Reads all data from `logs/history.json` and the `results/` directory. Generates an HTML report and opens the Reports viewer window.
 
@@ -201,7 +259,7 @@ Note: This lists cached devices, not a live active scan. RSSI is reported as "N/
 
 ---
 
-## 11. Emergency Lockdown
+## 14. Emergency Lockdown
 
 Immediately blocks all further module dispatch and disables every sidebar button.
 
@@ -223,12 +281,15 @@ For a thorough assessment of an unknown network:
 ```
 1. Passive Monitor (60s)     — baseline traffic, detect any active threats
 2. ARP Monitor (120s)        — dedicated MITM check
-3. LAN Scanning              — enumerate hosts and open ports
-4. WiFi Audit                — survey the wireless landscape
-5. TLS Audit                 — check HTTPS health on discovered hosts
-6. Bluetooth Recon           — survey nearby Bluetooth devices
-7. Anomaly Detection         — cross-analyse all session data
-8. Reports                   — generate HTML summary for record-keeping
+3. LAN Scanning              — enumerate hosts, open ports, and service versions
+4. CVE Matcher               — check discovered services against known CVEs
+5. WiFi Audit                — survey the wireless landscape
+6. TLS Audit                 — check HTTPS health on discovered hosts
+7. DNS Query Monitor         — watch for suspicious outbound DNS activity
+8. Bluetooth Recon           — survey nearby Bluetooth devices
+9. Hardware Monitor          — check device health and deployment readiness
+10. Anomaly Detection        — cross-analyse all session data
+11. Reports                  — generate HTML summary for record-keeping
 ```
 
-Run Anomaly Detection last — it is most useful once several other modules have built up session history.
+Run **CVE Matcher** immediately after **LAN Scanning** — it consumes that scan's service data. Run **Anomaly Detection** last — it is most useful once several other modules have built up session history.

@@ -43,7 +43,13 @@ CyberDeck-ESAIP/
 │   ├── arp_monitor.py
 │   ├── anomaly_detect.py
 │   ├── bluetooth_recon.py
+│   ├── cve_matcher.py
 │   ├── dashboard.py
+│   ├── dns_monitor/          # Package-style module
+│   │   ├── __init__.py       # Exports run() at package level
+│   │   ├── module.py         # run() implementation
+│   │   └── monitor.py        # DNSMonitor class + Scapy capture logic
+│   ├── hwmon_telemetry.py
 │   ├── lan_scan.py
 │   ├── passive_monitor.py
 │   ├── pentest_tools.py
@@ -126,7 +132,9 @@ The primary UI. Serves the web dashboard at `http://0.0.0.0:<port>` (port from `
 | `/api/lockdown` | POST | Toggles emergency lockdown on/off |
 | `/api/results/list` | GET | Returns a sorted list of result JSON filenames |
 
-Subscribes to 4 EventBus events: `MODULE_STARTED`, `MODULE_STOPPED`, `RISK_UPDATED`, `HISTORY_UPDATED`.
+Subscribes to 5 EventBus events: `MODULE_STARTED`, `MODULE_STOPPED`, `RISK_UPDATED`, `HISTORY_UPDATED`, `SCAN_COMPLETED`.
+
+The `SCAN_COMPLETED` subscription stores the latest module result in `api_state["latest_result"]` so the browser can render visual charts (Chart.js) automatically after Hardware Monitor or CVE Matcher scans complete.
 
 All module dispatch goes through `controller.dispatch_module()`, maintaining the same thread-safety and history archival as the original Tkinter path.
 
@@ -193,7 +201,7 @@ Thread-safe Pub/Sub singleton. All cross-component communication flows through h
 | `SCAN_REQUESTED` | Controller | — | `module_name` (str) |
 | `MODULE_STARTED` | Controller | MainWindow | `module_name` (str) |
 | `MODULE_STOPPED` | Controller | MainWindow | `module_name` (str) |
-| `SCAN_COMPLETED` | Controller | MainWindow, RiskEngine | `history_record` (dict) |
+| `SCAN_COMPLETED` | Controller | web_ui.py, RiskEngine | `history_record` (dict) |
 | `RISK_UPDATED` | RiskEngine | MainWindow | `score` (int) |
 | `HISTORY_UPDATED` | AppState | MainWindow | `telemetry` (dict) |
 | `TOPOLOGY_UPDATED` | AppState | — | `scan_data` (dict) |
@@ -245,8 +253,11 @@ All modules implement the same contract: `run(config, callback=None, **kwargs) -
 | WiFi Audit | `modules/wifi_audit.py` | `nmcli` subprocess; sorts by signal; flags `WEAK_CRYPTO` / `OPEN_NETWORK` | No |
 | Bluetooth Recon | `modules/bluetooth_recon.py` | `bluetoothctl devices` subprocess | No |
 | TLS Audit | `modules/tls_audit.py` | stdlib `ssl` only — cert expiry, self-signed, hostname, deprecated TLS version | No |
+| DNS Query Monitor | `modules/dns_monitor/` | Scapy sniff on UDP port 53; suspicious domain heuristics; live stats loop | Yes |
 | Pentest Toolkit | `modules/pentest_tools.py` | Metasploit MSFRPC (`pymetasploit3`); falls back to port-to-exploit simulation | No |
 | Anomaly Detection | `modules/anomaly_detect.py` | 7 heuristic rules on `logs/history.json`; optional Gemini AI narrative | No |
+| Hardware Monitor | `modules/hwmon_telemetry.py` | `psutil` — 30 time-series samples of CPU, temp, battery, power; renders Chart.js charts in dashboard | No |
+| CVE Matcher | `modules/cve_matcher.py` | NVD API (free) — maps LAN Scan service+version strings to known CVEs; renders severity chart + table | No |
 | Reports | `modules/dashboard.py` | Reads history + results dir; generates HTML via `report_generator.py` | No |
 
 ---

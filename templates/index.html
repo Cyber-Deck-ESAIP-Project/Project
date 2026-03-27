@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CyberDeck OS v2.0 // Web Command Center</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         :root {
             --bg-main: #0D1117;
@@ -26,8 +27,64 @@
             padding: 20px;
             display: flex;
             flex-direction: column;
-            height: 100vh;
+            min-height: 100vh;
             box-sizing: border-box;
+        }
+
+        .visual-panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            padding: 15px;
+            margin-top: 20px;
+        }
+
+        .visual-panel h2 {
+            color: var(--accent-cyan);
+            font-size: 1rem;
+            margin: 0 0 15px 0;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .charts-row {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .chart-box {
+            flex: 1;
+            min-width: 180px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border);
+            padding: 10px;
+        }
+
+        .chart-box h3 {
+            color: var(--accent-orange);
+            font-size: 0.8rem;
+            margin: 0 0 8px 0;
+            text-align: center;
+        }
+
+        .cve-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+        }
+
+        .cve-table th {
+            color: var(--accent-cyan);
+            border-bottom: 1px solid var(--border);
+            padding: 6px 8px;
+            text-align: left;
+            white-space: nowrap;
+        }
+
+        .cve-table td {
+            padding: 5px 8px;
+            border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+            vertical-align: top;
         }
 
         .header {
@@ -250,6 +307,60 @@
         </div>
     </div>
 
+    <div id="visual-panel" style="display:none;">
+        <!-- Hardware Monitor Charts -->
+        <div id="hwmon-visual" class="visual-panel" style="display:none;">
+            <h2>HARDWARE TELEMETRY — VISUAL ANALYSIS</h2>
+            <div class="charts-row">
+                <div class="chart-box">
+                    <h3>CPU USAGE (%)</h3>
+                    <canvas id="chart-cpu" height="130"></canvas>
+                </div>
+                <div class="chart-box">
+                    <h3>TEMPERATURE (°C)</h3>
+                    <canvas id="chart-temp" height="130"></canvas>
+                </div>
+                <div class="chart-box" style="max-width:220px;">
+                    <h3>DEPLOYMENT READINESS</h3>
+                    <canvas id="chart-readiness" height="130"></canvas>
+                    <div id="readiness-score" style="text-align:center; margin-top:6px; font-size:1.1rem; font-weight:bold;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CVE Matcher Charts -->
+        <div id="cve-visual" class="visual-panel" style="display:none;">
+            <h2>CVE VULNERABILITY ANALYSIS</h2>
+            <div class="charts-row">
+                <div class="chart-box" style="max-width:260px;">
+                    <h3>SEVERITY DISTRIBUTION</h3>
+                    <canvas id="chart-severity" height="160"></canvas>
+                </div>
+                <div class="chart-box" style="flex:3;">
+                    <h3>VULNERABILITY FINDINGS</h3>
+                    <div style="overflow-y:auto; max-height:280px;">
+                        <table class="cve-table">
+                            <thead>
+                                <tr>
+                                    <th>CVE ID</th>
+                                    <th>HOST</th>
+                                    <th>SERVICE</th>
+                                    <th>CVSS</th>
+                                    <th>SEVERITY</th>
+                                    <th>DESCRIPTION</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cve-table-body"></tbody>
+                        </table>
+                        <div id="cve-no-results" style="display:none; color:var(--accent-green); padding:10px;">
+                            No CVEs found for scanned services. Network looks clean.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="footer">
         <label for="target" style="color: var(--text-main);">TARGET_HOST:</label>
         <input type="text" id="target" class="target-input" value="127.0.0.1">
@@ -305,6 +416,7 @@
                         moduleBtns.forEach(btn => btn.disabled = false);
                     }
                 }
+                updateVisualPanel(data.latest_result);
             } catch (e) {
                 console.error("Status check failed", e);
             }
@@ -336,6 +448,139 @@
                 fetchStatus();
             } catch (e) {
                 alert("Failed to toggle lockdown");
+            }
+        }
+
+        // ── Visual charts ──────────────────────────────────────────────
+        let _cpuChart = null, _tempChart = null, _readinessChart = null, _severityChart = null;
+        let _lastVisualModule = "";
+
+        const CHART_DEFAULTS = {
+            plugins: { legend: { display: false } },
+            animation: false,
+            scales: {
+                y: { ticks: { color: '#C9D1D9', font: { family: 'Courier New' } }, grid: { color: '#30363D' } },
+                x: { ticks: { color: '#C9D1D9', font: { family: 'Courier New' } }, grid: { display: false } }
+            }
+        };
+
+        function renderHwmonCharts(data) {
+            const cpu = data.cpu || {};
+            const thermal = data.thermal || {};
+            const risk = data.risk_assessment || {};
+            const score = risk.overall !== undefined ? risk.overall : 0;
+
+            document.getElementById('visual-panel').style.display = 'block';
+            document.getElementById('hwmon-visual').style.display = 'block';
+            document.getElementById('cve-visual').style.display = 'none';
+
+            if (_cpuChart) _cpuChart.destroy();
+            _cpuChart = new Chart(document.getElementById('chart-cpu'), {
+                type: 'bar',
+                data: {
+                    labels: ['Average', 'Maximum', 'Minimum'],
+                    datasets: [{
+                        data: [cpu.avg_usage_percent || 0, cpu.max_usage_percent || 0, cpu.min_usage_percent || 0],
+                        backgroundColor: ['#00FFFF', '#FF4444', '#4ADE80'],
+                        borderColor: 'transparent',
+                    }]
+                },
+                options: { ...CHART_DEFAULTS, scales: { ...CHART_DEFAULTS.scales, y: { ...CHART_DEFAULTS.scales.y, min: 0, max: 100 } } }
+            });
+
+            if (_tempChart) _tempChart.destroy();
+            _tempChart = new Chart(document.getElementById('chart-temp'), {
+                type: 'bar',
+                data: {
+                    labels: ['Average', 'Maximum', 'Current'],
+                    datasets: [{
+                        data: [thermal.avg_temp_c || 0, thermal.max_temp_c || 0, thermal.current_temp_c || 0],
+                        backgroundColor: ['#4ADE80', '#FF4444', '#00FFFF'],
+                        borderColor: 'transparent',
+                    }]
+                },
+                options: CHART_DEFAULTS
+            });
+
+            const scoreColor = score >= 70 ? '#4ADE80' : score >= 40 ? '#F59E0B' : '#FF4444';
+            if (_readinessChart) _readinessChart.destroy();
+            _readinessChart = new Chart(document.getElementById('chart-readiness'), {
+                type: 'doughnut',
+                data: {
+                    datasets: [{
+                        data: [score, 100 - score],
+                        backgroundColor: [scoreColor, '#1a1a2e'],
+                        borderColor: 'transparent',
+                    }]
+                },
+                options: { animation: false, cutout: '68%', plugins: { legend: { display: false } } }
+            });
+
+            const scoreEl = document.getElementById('readiness-score');
+            scoreEl.textContent = `${score}/100`;
+            scoreEl.style.color = scoreColor;
+        }
+
+        function renderCveCharts(data) {
+            const summary = data.severity_summary || {};
+            const vulns = data.vulnerabilities || [];
+
+            document.getElementById('visual-panel').style.display = 'block';
+            document.getElementById('cve-visual').style.display = 'block';
+            document.getElementById('hwmon-visual').style.display = 'none';
+
+            if (_severityChart) _severityChart.destroy();
+            _severityChart = new Chart(document.getElementById('chart-severity'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Critical', 'High', 'Medium', 'Low', 'Unknown'],
+                    datasets: [{
+                        data: [summary.CRITICAL || 0, summary.HIGH || 0, summary.MEDIUM || 0, summary.LOW || 0, summary.UNKNOWN || 0],
+                        backgroundColor: ['#FF4444', '#F59E0B', '#FACC15', '#4ADE80', '#555555'],
+                        borderColor: 'transparent',
+                    }]
+                },
+                options: {
+                    animation: false,
+                    plugins: { legend: { labels: { color: '#C9D1D9', font: { family: 'Courier New', size: 11 } } } }
+                }
+            });
+
+            const tbody = document.getElementById('cve-table-body');
+            const noResults = document.getElementById('cve-no-results');
+            tbody.innerHTML = '';
+
+            const SCOLOR = { CRITICAL: '#FF4444', HIGH: '#F59E0B', MEDIUM: '#FACC15', LOW: '#4ADE80', UNKNOWN: '#888888' };
+
+            if (vulns.length === 0) {
+                noResults.style.display = 'block';
+            } else {
+                noResults.style.display = 'none';
+                vulns.forEach(v => {
+                    const c = SCOLOR[v.severity] || '#888888';
+                    const row = document.createElement('tr');
+                    row.innerHTML =
+                        `<td style="color:${c};white-space:nowrap;">${v.cve_id}</td>` +
+                        `<td style="white-space:nowrap;">${v.ip}:${v.port}</td>` +
+                        `<td style="white-space:nowrap;">${v.product} ${v.version || ''}</td>` +
+                        `<td style="color:${c};font-weight:bold;">${(v.cvss_score || 0).toFixed(1)}</td>` +
+                        `<td style="color:${c};">${v.severity}</td>` +
+                        `<td style="color:#C9D1D9;">${v.description}</td>`;
+                    tbody.appendChild(row);
+                });
+            }
+        }
+
+        function updateVisualPanel(latestResult) {
+            if (!latestResult || !latestResult.module) return;
+            const mod = latestResult.module;
+            const data = latestResult.data || {};
+            if (mod === _lastVisualModule) return;   // already rendered
+            _lastVisualModule = mod;
+            if (mod === 'Hardware Monitor' && Object.keys(data).length > 0) {
+                renderHwmonCharts(data);
+            } else if (mod === 'CVE Matcher' && Object.keys(data).length > 0) {
+                renderCveCharts(data);
             }
         }
 

@@ -98,6 +98,8 @@ class SystemController:
                 return len(data["scan_results"])
             if "anomalous_packets" in data:
                 return len(data["anomalous_packets"])
+            if "cves_found" in data:
+                return int(data["cves_found"])
         except:
             pass
         return 0
