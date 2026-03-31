@@ -10,7 +10,7 @@
             "enabled": true,
             "interface": "wlan0",
             "timeout": 30,
-            "max_deep_scan_hosts": 30
+            "max_deep_scan_hosts": 50
         },
         "wifi_audit": {
             "enabled": true,

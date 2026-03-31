@@ -84,7 +84,7 @@ def run(config, callback=None, target=None, **kwargs):
                 if callback: callback(f"[*] {skipped} additional hosts discovered but skipped for deep scan.")
             if callback: callback(f"[*] Engaging parallel deep-scan port enumeration profiling...")
 
-            nm.scan(hosts=' '.join(deep_hosts), arguments='-F -sV --version-light -T4 --host-timeout 15s --max-retries 1')
+            nm.scan(hosts=' '.join(deep_hosts), arguments='-F -sV -T4 --host-timeout 30s --max-retries 2')
             
             for host in nm.all_hosts():
                 if nm[host].state() == 'up':

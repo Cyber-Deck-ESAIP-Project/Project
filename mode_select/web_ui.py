@@ -11,6 +11,7 @@ if PROJECT_ROOT not in sys.path:
 from core.event_bus import event_bus
 from core.app_state import state
 from core.controller import controller
+from core.risk_engine import risk_engine  # noqa: F401 — instantiates singleton and subscribes to events
 from modules import lan_scan, wifi_audit, bluetooth_recon, pentest_tools, anomaly_detect, dashboard, passive_monitor, arp_monitor, tls_audit, hwmon_telemetry, cve_matcher
 from modules.dns_monitor import module as dns_monitor
 from utils.report_generator import generate_report

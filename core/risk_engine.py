@@ -2,6 +2,8 @@ from typing import Dict, Any
 from core.app_state import state
 from core.event_bus import event_bus, SCAN_COMPLETED, HONEYPOT_HIT, DEVICE_DETECTED
 
+HIGH_RISK_PORTS = {21, 23, 445, 3389, 5900}
+
 class RiskEngine:
     """
     Deterministic scoring engine that calculates a 0-100 system Risk Score
@@ -12,6 +14,7 @@ class RiskEngine:
         self._honeypot_hits = 0
         self._unknown_devices = 0
         self._open_ports = 0
+        self._high_risk_port_hits = 0
         self._weak_crypto_networks = 0
         
         # Subscribe to operational events to recalculate risk automatically
@@ -31,8 +34,12 @@ class RiskEngine:
         if mod == "LAN Scanning":
             results = data.get("scan_results", {})
             if isinstance(results, dict):
-                port_count = sum(len(host_data.get("ports", [])) for host_data in results.values())
-                self._open_ports = port_count
+                self._open_ports = sum(len(host_data.get("ports", [])) for host_data in results.values())
+                self._high_risk_port_hits = sum(
+                    1 for host_data in results.values()
+                    for p in host_data.get("ports", [])
+                    if p.get("port") in HIGH_RISK_PORTS
+                )
 
         elif mod == "WiFi Audit":
             results = data.get("scan_results", [])
@@ -70,6 +77,7 @@ class RiskEngine:
         """
         score = self._base_risk
         score += (self._open_ports * 5)
+        score += (self._high_risk_port_hits * 20)
         score += (self._weak_crypto_networks * 10)
         score += (self._unknown_devices * 15)
         score += (self._honeypot_hits * 5)
