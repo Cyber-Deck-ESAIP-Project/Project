@@ -9,7 +9,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from utils.result_handler import create_result  # type: ignore
-from .monitor import main
+from .monitor import main, SCAPY_AVAILABLE
 
 def run(config=None, target=None, callback=None, **kwargs):
     """
@@ -25,6 +25,11 @@ def run(config=None, target=None, callback=None, **kwargs):
         else:
             print(msg)
 
+    if not SCAPY_AVAILABLE:
+        msg = "Scapy library not installed. Cannot perform DNS capture. Run: pip install scapy"
+        web_log(f"[!] {msg}")
+        return create_result("dns_monitor", "error", errors=[msg])
+
     try:
         mod_config = config.get('modules', {}).get('dns_monitor', {}) if config and isinstance(config, dict) else {}
         iface = mod_config.get('interface')
@@ -36,11 +41,12 @@ def run(config=None, target=None, callback=None, **kwargs):
         t.start()
         web_log(f'[DNS Query Monitor] Started. Monitoring {iface or "default"} for {duration}s...')
         time.sleep(duration)
-        monitor.running = False
+        with monitor.lock:
+            monitor.running = False
         t.join(timeout=duration + 5)
         # After scan, always send stats to dashboard
         with monitor.lock:
-            top_domains = monitor.domain_counter.most_common(3)
+            top_domains = monitor.domain_counter.most_common(5)
             stats_msg = [
                 "--- DNS Query Stats ---",
                 f"Total queries: {monitor.total_count}",
@@ -56,7 +62,12 @@ def run(config=None, target=None, callback=None, **kwargs):
         return create_result("dns_monitor", "success", data={
             "total_queries": monitor.total_count,
             "suspicious_count": monitor.suspicious_count,
+            "suspicious_ratio": round(monitor.suspicious_count / max(1, monitor.total_count), 3),
             "top_domains": [{"domain": d, "count": c} for d, c in top_domains],
+            "top_suspicious": [{"domain": d, "count": c} for d, c in monitor.suspicious_domains.most_common(5)],
+            "qtype_breakdown": dict(monitor.stats),
+            "interface": iface or "all",
+            "duration_seconds": duration,
         })
     except KeyboardInterrupt:
         web_log("\n[!] DNS Monitor stopped by user.")

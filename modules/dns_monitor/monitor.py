@@ -6,15 +6,15 @@ from collections import Counter, defaultdict
 from datetime import datetime
 
 try:
-    from scapy.all import sniff, DNSQR, UDP
+    from scapy.all import sniff, DNSQR, UDP, IP
+    SCAPY_AVAILABLE = True
 except ImportError:
-    print("[!] Scapy is required. Install with: pip install scapy")
-    sys.exit(1)
+    SCAPY_AVAILABLE = False
 
 import re
 
 LOG_FILE = os.path.join(os.path.dirname(__file__), "dns_queries.log")
-SUSPICIOUS_TLDS = {".xyz", ".top", ".gq", ".tk", ".ml", ".cf"}
+SUSPICIOUS_TLDS = {".xyz", ".top", ".gq", ".tk", ".ml", ".cf", ".cc", ".pw", ".ws", ".work", ".download", ".club"}
 _CONSONANT_RE = re.compile(r"[bcdfghjklmnpqrstvwxyz]{6,}", re.I)
 
 DNS_QTYPE_NAMES = {
@@ -44,38 +44,45 @@ class DNSMonitor:
         self.iface = iface
         self.stats = defaultdict(int)
         self.domain_counter = Counter()
+        self.suspicious_domains = Counter()
         self.suspicious_count = 0
         self.total_count = 0
         self.running = True
         self.lock = threading.Lock()
         self.callback = callback
 
-    def log_query(self, domain, qtype, ts, suspicious):
+    def log_query(self, src_ip, domain, qtype, ts, suspicious):
         with open(LOG_FILE, "a") as f:
-            f.write(f"{ts} | {domain} | {qtype} | {'SUSPICIOUS' if suspicious else 'OK'}\n")
+            f.write(f"{ts} | {src_ip} | {domain} | {qtype} | {'SUSPICIOUS' if suspicious else 'OK'}\n")
 
-    def print_query(self, domain, qtype, ts, suspicious):
-        msg = f"{ts} | {domain} | {qtype} {'[SUSPICIOUS]' if suspicious else '[OK]'}"
-        if self.callback:
-            self.callback(msg)
-        else:
-            color = "\033[91m" if suspicious else "\033[92m"
-            reset = "\033[0m"
-            print(f"{color}{msg}{reset}")
+    def print_query(self, src_ip, domain, qtype, ts, suspicious):
+        msg = f"{ts} | {src_ip} | {domain} | {qtype} {'[SUSPICIOUS]' if suspicious else '[OK]'}"
+        try:
+            if self.callback:
+                self.callback(msg)
+            else:
+                color = "\033[91m" if suspicious else "\033[92m"
+                reset = "\033[0m"
+                print(f"{color}{msg}{reset}")
+        except Exception:
+            pass
 
     def process_packet(self, pkt):
         if pkt.haslayer(DNSQR) and pkt.haslayer(UDP) and pkt[UDP].dport == 53:
-            domain = pkt[DNSQR].qname.decode(errors="ignore").rstrip('.')
+            domain = pkt[DNSQR].qname.decode(errors="ignore").rstrip('.').lower()
             qtype = DNS_QTYPE_NAMES.get(pkt[DNSQR].qtype, str(pkt[DNSQR].qtype))
+            src_ip = pkt[IP].src if pkt.haslayer(IP) else "unknown"
             ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             suspicious = is_suspicious(domain)
             with self.lock:
                 self.total_count += 1
                 self.domain_counter[domain] += 1
+                self.stats[qtype] += 1
                 if suspicious:
                     self.suspicious_count += 1
-            self.log_query(domain, qtype, ts, suspicious)
-            self.print_query(domain, qtype, ts, suspicious)
+                    self.suspicious_domains[domain] += 1
+            self.log_query(src_ip, domain, qtype, ts, suspicious)
+            self.print_query(src_ip, domain, qtype, ts, suspicious)
 
     def stats_loop(self):
         while self.running:
@@ -98,6 +105,14 @@ class DNSMonitor:
                     print(msg)
 
     def start(self):
+        if not SCAPY_AVAILABLE:
+            msg = "[!] Scapy not installed. Run: pip install scapy"
+            if self.callback:
+                self.callback(msg)
+            else:
+                print(msg)
+            self.running = False
+            return
         if os.geteuid() != 0:
             msg = "[!] Root privileges required to sniff packets. Run with sudo."
             if self.callback:
