@@ -171,7 +171,8 @@ class ReportGenerator:
     def _build_tls_html(self, data: Dict[str, Any]) -> str:
         payload     = data.get("data", {})
         audited     = self._safe_int(payload.get("hosts_audited", 0))
-        reachable   = self._safe_int(payload.get("hosts_reachable", 0))
+        reachable   = self._safe_int(payload.get("probes_reachable", 0))
+        probes_total = self._safe_int(payload.get("probes_total", audited))
         vuln_count  = self._safe_int(payload.get("vulnerabilities_found", 0))
         tls_results = payload.get("tls_results", [])
 
@@ -208,7 +209,7 @@ class ReportGenerator:
             <h2>TLS Audit Summary</h2>
             <div class="metric-grid">
                 <div class="metric"><span class="label">Hosts Audited</span><span class="value">{audited}</span></div>
-                <div class="metric"><span class="label">Reachable</span><span class="value" style="color:{'#34d399' if reachable else '#f87171'}">{reachable}/{audited}</span></div>
+                <div class="metric"><span class="label">Probes Reachable</span><span class="value" style="color:{'#34d399' if reachable else '#f87171'}">{reachable}/{probes_total}</span></div>
                 <div class="metric"><span class="label">Issues Found</span><span class="value" style="color:{'#f87171' if vuln_count else '#34d399'}">{vuln_count}</span></div>
             </div>
         </section>
@@ -330,6 +331,12 @@ class ReportGenerator:
         total       = self._safe_int(payload.get("total_queries", 0))
         suspicious  = self._safe_int(payload.get("suspicious_count", 0))
         top_domains = payload.get("top_domains", [])
+        ratio       = payload.get("suspicious_ratio", None)
+        top_susp    = payload.get("top_suspicious", [])
+        qtype_data  = payload.get("qtype_breakdown", {})
+        iface       = self._clean_text(payload.get("interface", "-"))
+        duration    = self._safe_int(payload.get("duration_seconds", 0))
+        ratio_str   = f"{ratio:.1%}" if isinstance(ratio, float) else "-"
 
         domain_rows = "".join(
             f"<tr>"
@@ -339,7 +346,31 @@ class ReportGenerator:
             for d in (top_domains if isinstance(top_domains, list) else []) if isinstance(d, dict)
         ) or "<tr><td colspan='2' class='muted'>No domains captured.</td></tr>"
 
+        susp_rows = "".join(
+            f"<tr>"
+            f"<td style='color:#f87171'>{self._clean_text(d.get('domain', '?'))}</td>"
+            f"<td>{self._safe_int(d.get('count', 0))}</td>"
+            "</tr>"
+            for d in (top_susp if isinstance(top_susp, list) else []) if isinstance(d, dict)
+        ) or "<tr><td colspan='2' class='muted'>No suspicious domains captured.</td></tr>"
+
+        qtype_rows = "".join(
+            f"<tr><td>{self._clean_text(qtype)}</td><td>{self._safe_int(count)}</td></tr>"
+            for qtype, count in sorted(qtype_data.items(), key=lambda x: -x[1])
+        ) if isinstance(qtype_data, dict) and qtype_data else ""
+
         susp_color = "#f87171" if suspicious else "#34d399"
+
+        qtype_section = f"""
+        <section class="card">
+            <h2>Query Type Breakdown</h2>
+            <div class="table-wrap">
+                <table style="min-width:200px">
+                    <thead><tr><th>Type</th><th>Count</th></tr></thead>
+                    <tbody>{qtype_rows}</tbody>
+                </table>
+            </div>
+        </section>""" if qtype_rows else ""
 
         return self._header_card(data) + f"""
         <section class="card">
@@ -347,6 +378,9 @@ class ReportGenerator:
             <div class="metric-grid">
                 <div class="metric"><span class="label">Total Queries</span><span class="value">{total}</span></div>
                 <div class="metric"><span class="label">Suspicious</span><span class="value" style="color:{susp_color}">{suspicious}</span></div>
+                <div class="metric"><span class="label">Suspicious Ratio</span><span class="value" style="color:{susp_color}">{ratio_str}</span></div>
+                <div class="metric"><span class="label">Interface</span><span class="value" style="font-size:0.9rem">{iface}</span></div>
+                <div class="metric"><span class="label">Duration</span><span class="value">{duration}s</span></div>
             </div>
         </section>
         <section class="card">
@@ -358,6 +392,16 @@ class ReportGenerator:
                 </table>
             </div>
         </section>
+        <section class="card">
+            <h2>Top Suspicious Domains</h2>
+            <div class="table-wrap">
+                <table style="min-width:300px">
+                    <thead><tr><th>Domain</th><th>Count</th></tr></thead>
+                    <tbody>{susp_rows}</tbody>
+                </table>
+            </div>
+        </section>
+        {qtype_section}
         """ + self._errors_card(data)
 
     # ------------------------------------------------------------------
@@ -543,44 +587,59 @@ class ReportGenerator:
     # ------------------------------------------------------------------
 
     def _build_pentest_html(self, data: Dict[str, Any]) -> str:
-        payload    = data.get("data", {})
-        target_ip  = self._clean_text(payload.get("target_ip", "-"))
-        msf_ver    = self._clean_text(payload.get("msf_version", "-"))
-        matches    = payload.get("matches", [])
+        payload       = data.get("data", {})
+        msf_ver       = self._clean_text(payload.get("msf_version", "-"))
+        source        = self._clean_text(payload.get("source", "-"))
+        hosts_count   = self._safe_int(payload.get("hosts_analyzed", 0))
+        total_matches = self._safe_int(payload.get("total_matches", 0))
+        results       = payload.get("results", [])
 
         rank_color = {"excellent": "#34d399", "great": "#4fd1c5", "normal": "#fbbf24", "low": "#f87171"}
 
         match_rows = []
-        for m in (matches if isinstance(matches, list) else []):
-            if not isinstance(m, dict):
+        for host_result in (results if isinstance(results, list) else []):
+            if not isinstance(host_result, dict):
                 continue
-            r = str(m.get("rank", "")).lower()
-            rc = rank_color.get(r, "#97a8be")
-            match_rows.append(
-                f"<tr>"
-                f"<td>{self._clean_text(m.get('port','-'))}</td>"
-                f"<td>{self._clean_text(m.get('service','-'))}</td>"
-                f"<td><code style='font-size:0.82rem'>{self._clean_text(m.get('module','-'))}</code></td>"
-                f"<td style='color:{rc}'>{self._clean_text(m.get('rank','-')).title()}</td>"
-                f"<td>{self._clean_text(m.get('description','-'))}</td>"
-                "</tr>"
-            )
-        rows = "".join(match_rows) or "<tr><td colspan='5' class='muted'>No exploit matches found for this target.</td></tr>"
+            host_ip = self._clean_text(host_result.get("ip", "-"))
+            matches = host_result.get("matches", [])
+            if not matches:
+                match_rows.append(
+                    f"<tr><td><code>{host_ip}</code></td>"
+                    f"<td colspan='5' class='muted'>No exploit matches.</td></tr>"
+                )
+                continue
+            for m in (matches if isinstance(matches, list) else []):
+                if not isinstance(m, dict):
+                    continue
+                r = str(m.get("rank", "")).lower()
+                rc = rank_color.get(r, "#97a8be")
+                match_rows.append(
+                    f"<tr>"
+                    f"<td><code>{host_ip}</code></td>"
+                    f"<td>{self._clean_text(m.get('port','-'))}</td>"
+                    f"<td>{self._clean_text(m.get('service','-'))}</td>"
+                    f"<td><code style='font-size:0.82rem'>{self._clean_text(m.get('module','-'))}</code></td>"
+                    f"<td style='color:{rc}'>{self._clean_text(m.get('rank','-')).title()}</td>"
+                    f"<td>{self._clean_text(m.get('description','-'))}</td>"
+                    "</tr>"
+                )
+        rows = "".join(match_rows) or "<tr><td colspan='6' class='muted'>No exploit matches found.</td></tr>"
 
         return self._header_card(data) + f"""
         <section class="card">
             <h2>Pentest Toolkit Summary</h2>
             <div class="metric-grid">
-                <div class="metric"><span class="label">Target IP</span><span class="value" style="font-size:1rem">{target_ip}</span></div>
+                <div class="metric"><span class="label">Hosts Analyzed</span><span class="value">{hosts_count}</span></div>
                 <div class="metric"><span class="label">MSF Version</span><span class="value" style="font-size:0.9rem">{msf_ver}</span></div>
-                <div class="metric"><span class="label">Exploit Matches</span><span class="value" style="color:{'#f87171' if matches else '#34d399'}">{len(matches) if isinstance(matches,list) else 0}</span></div>
+                <div class="metric"><span class="label">Total Matches</span><span class="value" style="color:{'#f87171' if total_matches else '#34d399'}">{total_matches}</span></div>
+                <div class="metric"><span class="label">Source</span><span class="value" style="font-size:0.85rem">{source}</span></div>
             </div>
         </section>
         <section class="card">
             <h2>Exploit Module Matches</h2>
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>Port</th><th>Service</th><th>Module</th><th>Rank</th><th>Description</th></tr></thead>
+                    <thead><tr><th>Host IP</th><th>Port</th><th>Service</th><th>Module</th><th>Rank</th><th>Description</th></tr></thead>
                     <tbody>{rows}</tbody>
                 </table>
             </div>
@@ -608,9 +667,9 @@ class ReportGenerator:
 
         anomaly_rows = "".join(
             f"<tr><td>{self._clean_text(p.get('timestamp','-'))}</td>"
-            f"<td>{self._clean_text(p.get('protocol','-'))}</td>"
-            f"<td><code>{self._clean_text(p.get('src','-'))}</code></td>"
-            f"<td><code>{self._clean_text(p.get('dst','-'))}</code></td>"
+            f"<td>{self._clean_text(p.get('proto','-'))}</td>"
+            f"<td><code>{self._clean_text(p.get('src_ip','-'))}</code></td>"
+            f"<td><code>{self._clean_text(p.get('dst_ip','-'))}</code></td>"
             f"<td>{self._clean_text(p.get('reason','-'))}</td></tr>"
             for p in (anomalous if isinstance(anomalous, list) else []) if isinstance(p, dict)
         ) or "<tr><td colspan='5' class='muted'>No anomalous packets.</td></tr>"

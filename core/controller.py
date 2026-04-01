@@ -104,6 +104,10 @@ class SystemController:
                 return int(data["samples_collected"])
             if "cves_found" in data:
                 return int(data["cves_found"])
+            if "total_matches" in data:     # pentest_tools
+                return int(data["total_matches"])
+            if "probes_total" in data:      # tls_audit
+                return int(data["probes_total"])
         except:
             pass
         return 0
