@@ -16,21 +16,24 @@ from utils.result_handler import create_result  # type: ignore
 
 logger = get_logger()
 
-TLS_PORT = 443
+DEFAULT_PORTS = [443, 8443]
 CONNECT_TIMEOUT = 5  # seconds per host
 
 
-def _audit_host(host: str) -> Dict[str, Any]:
-    """Probe a single host on TLS_PORT and return a structured audit record."""
+def _audit_host(host: str, port: int) -> Dict[str, Any]:
+    """Probe a single host on the given port and return a structured audit record."""
     result: Dict[str, Any] = {
         "host": host,
-        "port": TLS_PORT,
+        "port": port,
         "reachable": False,
         "tls_version": None,
+        "cipher_suite": None,
+        "cipher_bits": None,
         "cert_subject": None,
         "cert_issuer": None,
         "cert_expiry": None,
         "days_until_expiry": None,
+        "sans": [],
         "expired": False,
         "self_signed": False,
         "hostname_valid": False,
@@ -43,10 +46,14 @@ def _audit_host(host: str) -> Dict[str, Any]:
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
 
-        with socket.create_connection((host, TLS_PORT), timeout=CONNECT_TIMEOUT) as sock:
+        with socket.create_connection((host, port), timeout=CONNECT_TIMEOUT) as sock:
             with ctx.wrap_socket(sock, server_hostname=host) as tls_sock:
                 result["reachable"] = True
                 result["tls_version"] = tls_sock.version()
+                cipher_info = tls_sock.cipher()   # (name, protocol, bits) or None
+                if cipher_info:
+                    result["cipher_suite"] = cipher_info[0]
+                    result["cipher_bits"] = cipher_info[2]
                 cert = tls_sock.getpeercert()
 
                 if cert:
@@ -54,6 +61,10 @@ def _audit_host(host: str) -> Dict[str, Any]:
                     issuer = dict(x[0] for x in cert.get("issuer", []))
                     result["cert_subject"] = subject.get("commonName", str(subject))
                     result["cert_issuer"] = issuer.get("commonName", str(issuer))
+                    result["sans"] = [
+                        value for rtype, value in cert.get("subjectAltName", [])
+                        if rtype in ("DNS", "IP Address")
+                    ]
 
                     expiry_str = cert.get("notAfter", "")
                     if expiry_str:
@@ -78,7 +89,7 @@ def _audit_host(host: str) -> Dict[str, Any]:
                     try:
                         strict_ctx = ssl.create_default_context()
                         with socket.create_connection(
-                            (host, TLS_PORT), timeout=CONNECT_TIMEOUT
+                            (host, port), timeout=CONNECT_TIMEOUT
                         ) as s2:
                             with strict_ctx.wrap_socket(s2, server_hostname=host):
                                 result["hostname_valid"] = True
@@ -93,8 +104,15 @@ def _audit_host(host: str) -> Dict[str, Any]:
                         f"WEAK_TLS_VERSION:{result['tls_version']}"
                     )
 
+                # Flag weak cipher suites
+                _weak_markers = ("RC4", "NULL", "EXPORT", "DES", "anon", "ADH", "AECDH")
+                if result["cipher_suite"] and any(
+                    m in result["cipher_suite"] for m in _weak_markers
+                ):
+                    result["vulnerabilities"].append("WEAK_CIPHER")
+
     except (socket.timeout, ConnectionRefusedError, OSError):
-        pass  # host not reachable on 443 — reachable stays False
+        pass  # host not reachable on this port — reachable stays False
     except Exception as e:
         logger.debug(f"TLS audit error on {host}: {e}")
 
@@ -140,56 +158,72 @@ def run(config: dict, callback=None, **kwargs) -> dict:
         if callback: callback(f"[-] {msg}")
         return create_result(module_name, "error", errors=[msg])
 
-    if callback: callback(f"[*] TLS Audit starting. {len(targets)} host(s) to probe on port {TLS_PORT}...")
+    ports: List[int] = mod_config.get("ports", DEFAULT_PORTS)
+    if callback: callback(f"[*] TLS Audit starting. {len(targets)} host(s) x {len(ports)} port(s)...")
 
     tls_results: List[Dict[str, Any]] = []
     vulnerabilities_found = 0
 
     for host in targets:
-        if callback: callback(f"[*] Probing {host}:{TLS_PORT}...")
-        audit = _audit_host(host)
-        tls_results.append(audit)
+        for port in ports:
+            if callback: callback(f"[*] Probing {host}:{port}...")
+            audit = _audit_host(host, port)
+            tls_results.append(audit)
 
-        if not audit["reachable"]:
-            if callback: callback(f"    [ ] {host} -- port {TLS_PORT} not reachable")
-            continue
+            if not audit["reachable"]:
+                if callback: callback(f"    [ ] {host}:{port} -- not reachable")
+                continue
 
-        vulns = audit["vulnerabilities"]
-        if vulns:
-            vulnerabilities_found += len(vulns)
-            if callback:
-                callback(
-                    f"    [!] {host} -- TLS:{audit['tls_version']} | "
-                    f"Expiry:{audit.get('cert_expiry', 'N/A')} | "
-                    f"VULNS: {', '.join(vulns)}"
-                )
-        else:
-            if callback:
-                callback(
-                    f"    [+] {host} -- TLS:{audit['tls_version']} | "
-                    f"Expiry:{audit.get('cert_expiry', 'N/A')} | OK"
-                )
+            vulns = audit["vulnerabilities"]
+            cipher_label = (
+                f"{audit['cipher_suite']}/{audit['cipher_bits']}b"
+                if audit.get("cipher_suite") else "?"
+            )
+            if vulns:
+                vulnerabilities_found += len(vulns)
+                if callback:
+                    callback(
+                        f"    [!] {host}:{audit['port']} -- TLS:{audit['tls_version']} | "
+                        f"Cipher:{cipher_label} | "
+                        f"Expiry:{audit.get('cert_expiry', 'N/A')} | "
+                        f"VULNS: {', '.join(vulns)}"
+                    )
+            else:
+                if callback:
+                    callback(
+                        f"    [+] {host}:{audit['port']} -- TLS:{audit['tls_version']} | "
+                        f"Cipher:{cipher_label} | "
+                        f"Expiry:{audit.get('cert_expiry', 'N/A')} | OK"
+                    )
 
-    hosts_reachable = sum(1 for r in tls_results if r["reachable"])
+    probes_total = len(tls_results)
+    probes_reachable = sum(1 for r in tls_results if r["reachable"])
 
     if callback:
         callback(
             f"\n[+] TLS Audit complete. "
-            f"{hosts_reachable}/{len(targets)} host(s) reachable on port {TLS_PORT}."
+            f"{probes_reachable}/{probes_total} probe(s) reachable "
+            f"({len(targets)} host(s) x {len(ports)} port(s))."
         )
     if vulnerabilities_found:
         if callback: callback(f"[!] {vulnerabilities_found} TLS vulnerability/issue(s) found.")
     else:
         if callback: callback(f"[+] No TLS issues found.")
 
-    logger.info(f"{module_name} complete. {len(targets)} probed, {vulnerabilities_found} issues.")
+    logger.info(
+        f"{module_name} complete. "
+        f"{probes_total} probe(s) across {len(targets)} host(s), "
+        f"{vulnerabilities_found} issue(s)."
+    )
 
     return create_result(
         module_name=module_name,
         status="success",
         data={
             "hosts_audited": len(targets),
-            "hosts_reachable": hosts_reachable,
+            "ports_scanned": ports,
+            "probes_total": probes_total,
+            "probes_reachable": probes_reachable,
             "vulnerabilities_found": vulnerabilities_found,
             "tls_results": tls_results,
         },

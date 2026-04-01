@@ -33,7 +33,8 @@
         },
         "tls_audit": {
             "enabled": true,
-            "default_target": ""
+            "default_target": "",
+            "ports": [443, 8443]
         },
         "hwmon_telemetry": {
             "enabled": true,
