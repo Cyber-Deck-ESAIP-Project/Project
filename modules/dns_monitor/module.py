@@ -37,7 +37,7 @@ def run(config=None, target=None, callback=None, **kwargs):
         web_log(f'[DNS Query Monitor] Started. Monitoring {iface or "default"} for {duration}s...')
         time.sleep(duration)
         monitor.running = False
-        t.join()
+        t.join(timeout=duration + 5)
         # After scan, always send stats to dashboard
         with monitor.lock:
             top_domains = monitor.domain_counter.most_common(3)

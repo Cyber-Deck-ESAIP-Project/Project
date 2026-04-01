@@ -87,7 +87,7 @@ def run(config: dict, callback=None, **kwargs) -> dict:
             if tcp_layer.flags == 0x02:  # SYN only
                 src = ip_layer.src
                 syn_tracker[src].add(tcp_layer.dport)
-                if len(syn_tracker[src]) == PORT_SCAN_THRESHOLD:
+                if len(syn_tracker[src]) >= PORT_SCAN_THRESHOLD:
                     entry = {
                         "src_ip": src,
                         "dst_ip": ip_layer.dst,
@@ -104,7 +104,7 @@ def run(config: dict, callback=None, **kwargs) -> dict:
         if pkt.haslayer(IP) and pkt.haslayer(ICMP):
             src = pkt[IP].src
             icmp_counter[src] += 1
-            if icmp_counter[src] == ICMP_FLOOD_THRESHOLD:
+            if icmp_counter[src] >= ICMP_FLOOD_THRESHOLD:
                 entry = {
                     "src_ip": src,
                     "dst_ip": pkt[IP].dst,

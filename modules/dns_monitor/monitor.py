@@ -11,24 +11,31 @@ except ImportError:
     print("[!] Scapy is required. Install with: pip install scapy")
     sys.exit(1)
 
+import re
+
 LOG_FILE = os.path.join(os.path.dirname(__file__), "dns_queries.log")
 SUSPICIOUS_TLDS = {".xyz", ".top", ".gq", ".tk", ".ml", ".cf"}
+_CONSONANT_RE = re.compile(r"[bcdfghjklmnpqrstvwxyz]{6,}", re.I)
+
+DNS_QTYPE_NAMES = {
+    1: "A", 2: "NS", 5: "CNAME", 6: "SOA", 12: "PTR",
+    15: "MX", 16: "TXT", 28: "AAAA", 33: "SRV", 255: "ANY",
+}
 
 # Heuristic: domain is suspicious if it's very long, looks random, or has uncommon TLD
 
 def is_suspicious(domain):
+    if not domain:
+        return False
     if len(domain) > 50:
         return True
     tld = "." + domain.split(".")[-1]
     if tld in SUSPICIOUS_TLDS:
         return True
-    # Random-looking: many digits or alternating consonant/vowel
     digit_ratio = sum(c.isdigit() for c in domain) / len(domain)
     if digit_ratio > 0.4:
         return True
-    # Looks random: long runs of consonants
-    import re
-    if re.search(r"[bcdfghjklmnpqrstvwxyz]{6,}", domain, re.I):
+    if _CONSONANT_RE.search(domain):
         return True
     return False
 
@@ -59,7 +66,7 @@ class DNSMonitor:
     def process_packet(self, pkt):
         if pkt.haslayer(DNSQR) and pkt.haslayer(UDP) and pkt[UDP].dport == 53:
             domain = pkt[DNSQR].qname.decode(errors="ignore").rstrip('.')
-            qtype = pkt[DNSQR].qtype
+            qtype = DNS_QTYPE_NAMES.get(pkt[DNSQR].qtype, str(pkt[DNSQR].qtype))
             ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             suspicious = is_suspicious(domain)
             with self.lock:
@@ -92,12 +99,13 @@ class DNSMonitor:
 
     def start(self):
         if os.geteuid() != 0:
-            msg = "[!] Root privileges required to sniff packets. Exiting."
+            msg = "[!] Root privileges required to sniff packets. Run with sudo."
             if self.callback:
                 self.callback(msg)
             else:
                 print(msg)
-            sys.exit(1)
+            self.running = False
+            return
         start_msg = "[*] Starting Real-Time DNS Query Monitor..."
         log_msg = f"[*] Logging to: {LOG_FILE}"
         if self.callback:
